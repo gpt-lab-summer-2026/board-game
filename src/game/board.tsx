@@ -1,63 +1,116 @@
-import boardData from './board.json';
 import mapPath from '../assets/map1.jpg';
+import './board.css';
+
+import {
+  spaceById,
+  spaces,
+  edges,
+  meta,
+} from './boardDataRestructure';
 
 function CreateObjects() {
-  const objectArray = boardData['spaces'].map(
+  const objectArray = spaces.map(
     (item: {
       id: string;
       kind: string;
       x: number;
       y: number;
     }) => {
-      console.log('id ', item['id']);
-      if (item['kind'] === 'city') {
+      if (item['kind'] === 'step') {
         return (
           <circle
-            r='0.015'
-            cx={item['x']}
-            cy={item['y']}
-            fill='red'
-          />
-        );
-      } else if (item['kind'] === 'step') {
-        return (
-          <circle
-            r='0.008'
-            cx={item['x']}
-            cy={item['y']}
+            r='10'
+            cx={item['x'] * meta['width']}
+            cy={item['y'] * meta['height']}
             fill='blue'
           />
         );
-      } else if (item['kind'] === 'sea') {
+      } else if (item['kind'] === 'city') {
         return (
           <circle
-            r='0.008'
-            cx={item['x']}
-            cy={item['y']}
+            r='30'
+            cx={item['x'] * meta['width']}
+            cy={item['y'] * meta['height']}
+            fill='red'
+          />
+        );
+      }
+      return null;
+    },
+  );
+  return <>{objectArray}</>;
+}
+
+// in it's own function so the sea routes would be below cities etc
+function CreateSeaRoutes() {
+  const objectArray = spaces.map(
+    (item: {
+      id: string;
+      kind: string;
+      x: number;
+      y: number;
+    }) => {
+      if (item['kind'] === 'sea') {
+        return (
+          <circle
+            r='10'
+            cx={item['x'] * meta['width']}
+            cy={item['y'] * meta['height']}
             fill='blue'
             opacity='0.6'
           />
         );
-
-        return null;
       }
+
+      return null;
     },
   );
+  return <>{objectArray}</>;
+}
+
+function CreateFlightRoutes() {
+  const objectArray = edges.map(item => {
+    if (item['kind'] === 'flight') {
+      // find correct city objects so their postions are known
+      const city1 = spaceById[item.a];
+      const city2 = spaceById[item.b];
+
+      return (
+        <line
+          x1={city1['x'] * meta['width']}
+          y1={city1['y'] * meta['height']}
+          x2={city2['x'] * meta['width']}
+          y2={city2['y'] * meta['height']}
+          stroke='red'
+          stroke-width='5'
+          strokeDasharray='10'
+        />
+      );
+    }
+
+    return null;
+  });
   return <>{objectArray}</>;
 }
 
 function Board() {
   return (
     // for loop through board.json end render each object
-    <div>
+    <div className='wrapper'>
+      <img
+        className='wrapper-img'
+        src={mapPath}
+        alt='Game board map'
+      />
       <svg
-        viewBox='0 0 1 1'
+        className='svg'
+        viewBox='0 0 733 1024'
         xmlns='http://www.w3.org/2000/svg'
       >
+        <CreateSeaRoutes />
         <CreateObjects />
+        <CreateFlightRoutes />
       </svg>
-
-      <img src={mapPath} alt='Game board map' />
     </div>
   );
 }

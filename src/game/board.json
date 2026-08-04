@@ -1,6 +1,6 @@
 {
   "meta": {
-    "image": "map1.jpg",
+    "image": "../assets/map1.jpg",
     "width": 733,
     "height": 1024,
     "generated": "2026-08-04T06:14:40.030Z",
