@@ -1,4 +1,6 @@
+import type { Player } from '../App';
 import mapPath from '../assets/map1.jpg';
+
 import './board.css';
 
 import {
@@ -93,7 +95,22 @@ function CreateFlightRoutes() {
   return <>{objectArray}</>;
 }
 
-function Board() {
+function CreateButtons({ players }: { players: Player[] }) {
+  const playersArray = players.map(player => {
+    console.log('player: ', player);
+    return (
+      <circle
+        r='10'
+        cx={player['positionX'] * meta['width']}
+        cy={player['positionY'] * meta['height']}
+        fill='green'
+      />
+    );
+  });
+  return <>{playersArray}</>;
+}
+
+function Board({ players }: { players: Player[] }) {
   return (
     // for loop through board.json end render each object
     <div className='wrapper'>
@@ -110,6 +127,7 @@ function Board() {
         <CreateSeaRoutes />
         <CreateObjects />
         <CreateFlightRoutes />
+        <CreateButtons players={players} />
       </svg>
     </div>
   );
