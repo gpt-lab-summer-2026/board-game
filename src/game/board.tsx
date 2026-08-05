@@ -9,6 +9,13 @@ import {
   edges,
   meta,
 } from './boardDataRestructure';
+import { HOME_CITY_IDS, SPECIAL_CITIES } from './rules';
+
+function cityFill(id: string) {
+  if (HOME_CITY_IDS.includes(id)) return 'gold';
+  if (SPECIAL_CITIES[id]) return 'purple';
+  return 'red';
+}
 
 function CreateObjects() {
   const objectArray = spaces.map(
@@ -47,7 +54,7 @@ function CreateObjects() {
               r='30'
               cx={item['x'] * meta['width']}
               cy={item['y'] * meta['height']}
-              fill='red'
+              fill={cityFill(item.id)}
             />
             <text
               x={item['x'] * meta['width']}
@@ -133,15 +140,42 @@ function CreateFlightRoutes() {
   return <>{objectArray}</>;
 }
 
+const PIECE_SPREAD = 16;
+
+// When several pieces share a space, spread them around the center
+// in a small ring instead of stacking them exactly on top of each
+// other, so every piece stays visible.
+function pieceOffset(indexInGroup: number, groupSize: number) {
+  if (groupSize <= 1) return { dx: 0, dy: 0 };
+  const angle =
+    (2 * Math.PI * indexInGroup) / groupSize;
+  return {
+    dx: Math.cos(angle) * PIECE_SPREAD,
+    dy: Math.sin(angle) * PIECE_SPREAD,
+  };
+}
+
 function CreateButtons({ players }: { players: Player[] }) {
+  const byPlace = new Map<string, Player[]>();
+  for (const player of players) {
+    const group = byPlace.get(player.placeId) ?? [];
+    group.push(player);
+    byPlace.set(player.placeId, group);
+  }
+
   const playersArray = players.map(player => {
     const playerSpace = spaceById[player.placeId];
+    const group = byPlace.get(player.placeId) ?? [player];
+    const offset = pieceOffset(
+      group.indexOf(player),
+      group.length,
+    );
     return (
       <circle
         key={player.id}
         r='10'
-        cx={playerSpace.x * meta['width']}
-        cy={playerSpace.y * meta['height']}
+        cx={playerSpace.x * meta['width'] + offset.dx}
+        cy={playerSpace.y * meta['height'] + offset.dy}
         fill={player.pieceColor}
       />
     );
