@@ -1,7 +1,7 @@
 import type { Player } from '../App';
 import mapPath from '../assets/map1.jpg';
 
-import './board.css';
+import './game.css';
 
 import {
   spaceById,
@@ -135,13 +135,14 @@ function CreateFlightRoutes() {
 
 function CreateButtons({ players }: { players: Player[] }) {
   const playersArray = players.map(player => {
-    console.log('player: ', player);
+    const playerSpace = spaceById[player.placeId];
     return (
       <circle
+        key={player.id}
         r='10'
-        cx={player['positionX'] * meta['width']}
-        cy={player['positionY'] * meta['height']}
-        fill='green'
+        cx={playerSpace.x * meta['width']}
+        cy={playerSpace.y * meta['height']}
+        fill={player.pieceColor}
       />
     );
   });

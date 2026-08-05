@@ -2,103 +2,67 @@ import { useState, type ChangeEvent } from 'react';
 import './App.css';
 import Board from './game/board';
 import RollDice from './game/RollDice';
+import GameStats, {
+  type GameState,
+} from './game/GameStats';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
 library.add(fas);
-import { adjacency, spaceById } from './game/boardDataRestructure';
-import type { EdgeKind } from './game/boardDataRestructure';
+import { findMoves } from './game/FindMoves';
+import { spaceById } from './game/boardDataRestructure';
 
 export type Player = {
   id: string;
+  name: string;
   placeId: string;
-  positionX: number;
-  positionY: number;
+  pieceColor: string;
   money: number;
   inventory: Record<string, number>;
 };
 
-function InitializeGame(): Player[] {
-  return [
-    {
-      id: 'player-1',
-      placeId: 's70',
-      positionX: 0.45389,
-      positionY: 0.38926,
-      money: 300,
-      inventory: {
-        empty: 0,
-        horseShoe: 0,
-        robber: 0,
-        topaz: 0,
-        emerald: 0,
-        ruby: 0,
-        africaStar: 0,
-      },
+const START_PLACE_ID = 's70';
+const PIECE_COLORS = [
+  '#e6194b',
+  '#3cb44b',
+  '#4363d8',
+  '#f58231',
+  '#911eb4',
+];
+
+function createPlayers(names: string[]): Player[] {
+  return names.map((name, index) => ({
+    id: `player-${index + 1}`,
+    name,
+    placeId: START_PLACE_ID,
+    pieceColor: PIECE_COLORS[index % PIECE_COLORS.length],
+    money: 300,
+    inventory: {
+      empty: 0,
+      horseShoe: 0,
+      robber: 0,
+      topaz: 0,
+      emerald: 0,
+      ruby: 0,
+      africaStar: 0,
     },
-  ];
-}
-
-/**
- * All nodes reachable from `start` using only the given route kinds,
- * never revisiting a node within a single path. A destination is valid
- * either after using every one of the `steps` moves, or earlier if it
- * lands on a city (red circle) - per the rules, you may always stop
- * early at a city without using the rest of the roll.
- *
- * Returns destination id -> path (including start, ending at destination).
- */
-export function findMoves(
-  start: string,
-  steps: number,
-  kinds: EdgeKind[] = ['land'],
-): Map<string, string[]> {
-  const results = new Map<string, string[]>();
-
-  function explore(
-    current: string,
-    path: string[],
-    remaining: number,
-  ) {
-    const isEarlyStop = path.length > 1 && remaining > 0;
-    if (
-      (isEarlyStop && spaceById[current]?.kind === 'city') ||
-      remaining === 0
-    ) {
-      // first path found to a given destination wins
-      if (!results.has(current)) {
-        results.set(current, path);
-      }
-      if (remaining === 0) return;
-    }
-
-    for (const connection of adjacency[current] ?? []) {
-      if (!kinds.includes(connection.kind)) continue;
-      if (path.includes(connection.to)) continue; // no revisiting
-      explore(
-        connection.to,
-        [...path, connection.to],
-        remaining - 1,
-      );
-    }
-  }
-
-  explore(start, [start], steps);
-  return results;
+  }));
 }
 
 function App() {
-  const [players, setPlayers] = useState<Player[]>(
-    InitializeGame(),
-  );
-  const [currentPlayer, setCurrentPlayer] =
-    useState<Player>(players[0]);
+  const [players, setPlayers] = useState<Player[]>([]);
+
+  const [turnIndex, setTurnIndex] = useState(0);
+  const currentPlayer = players[turnIndex];
+
   const [lastRoll, setLastRoll] = useState<number | null>(
     null,
   );
   const [text, setText] = useState('');
-  const [moveError, setMoveError] = useState<
-    string | null
-  >(null);
+  const [moveError, setMoveError] = useState<string | null>(
+    null,
+  );
+  const [gameState, setGameState] =
+    useState<GameState>('notStarted');
 
   const moveClick = () => {
     if (lastRoll === null) {
@@ -107,6 +71,16 @@ function App() {
     }
 
     const destination = text.trim();
+    if (destination === '') {
+      setMoveError('Type a place to move to.');
+      return;
+    }
+
+    if (!spaceById[destination]) {
+      setMoveError(`"${destination}" is not a place on the board.`);
+      return;
+    }
+
     const moves = findMoves(
       currentPlayer['placeId'],
       lastRoll,
@@ -120,12 +94,9 @@ function App() {
       return;
     }
 
-    const space = spaceById[destination];
     const movedPlayer: Player = {
       ...currentPlayer,
       placeId: destination,
-      positionX: space.x,
-      positionY: space.y,
     };
 
     setPlayers(
@@ -133,7 +104,7 @@ function App() {
         player.id === movedPlayer.id ? movedPlayer : player,
       ),
     );
-    setCurrentPlayer(movedPlayer);
+    setTurnIndex(index => (index + 1) % players.length);
     setLastRoll(null);
     setText('');
     setMoveError(null);
@@ -148,21 +119,46 @@ function App() {
       <div className='game-board'>
         <Board players={players} />
       </div>
-      <div className='gaming-stats'>
+      <div className='game-info'>
         gaming stats
-        <RollDice onRoll={setLastRoll} />
-        {lastRoll !== null && <p>Last roll: {lastRoll}</p>}
-        <label>
-          move input:{' '}
-          <input
-            name='moveInput'
-            type='text'
-            value={text}
-            onChange={change}
-          />
-          <button onClick={moveClick}>Move</button>
-        </label>
-        {moveError && <p>{moveError}</p>}
+        <GameStats
+          gameState={gameState}
+          onStartGame={() => setGameState('starting')}
+          onBeginGame={names => {
+            setPlayers(createPlayers(names));
+            setTurnIndex(0);
+            setGameState('gameOn');
+          }}
+        />
+        {gameState === 'gameOn' && currentPlayer && (
+          <>
+            <p>
+              Current turn:{' '}
+              <span
+                style={{
+                  color: currentPlayer.pieceColor,
+                }}
+              >
+                {currentPlayer.name}
+              </span>
+            </p>
+            <RollDice onRoll={setLastRoll} />
+            {lastRoll !== null && (
+              <p>Last roll: {lastRoll}</p>
+            )}
+            <label>
+              move input:{' '}
+              <input
+                name='moveInput'
+                type='text'
+                value={text}
+                onChange={change}
+              />
+              <button onClick={moveClick}>Move</button>
+            </label>
+            {moveError && <p>{moveError}</p>}
+          </>
+        )}
       </div>
     </div>
   );
