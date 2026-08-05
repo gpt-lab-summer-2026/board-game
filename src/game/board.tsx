@@ -20,21 +20,47 @@ function CreateObjects() {
     }) => {
       if (item['kind'] === 'step') {
         return (
-          <circle
-            r='10'
-            cx={item['x'] * meta['width']}
-            cy={item['y'] * meta['height']}
-            fill='blue'
-          />
+          <g>
+            <circle
+              r='10'
+              cx={item['x'] * meta['width']}
+              cy={item['y'] * meta['height']}
+              fill='blue'
+            />
+            <text
+              x={item['x'] * meta['width']}
+              y={item['y'] * meta['height']}
+              text-anchor='middle'
+              fill='white'
+              font-size='10px'
+              font-family='Arial'
+              dy='.3em'
+            >
+              {item.id}
+            </text>
+          </g>
         );
       } else if (item['kind'] === 'city') {
         return (
-          <circle
-            r='30'
-            cx={item['x'] * meta['width']}
-            cy={item['y'] * meta['height']}
-            fill='red'
-          />
+          <g>
+            <circle
+              r='30'
+              cx={item['x'] * meta['width']}
+              cy={item['y'] * meta['height']}
+              fill='red'
+            />
+            <text
+              x={item['x'] * meta['width']}
+              y={item['y'] * meta['height']}
+              text-anchor='middle'
+              fill='white'
+              font-size='15px'
+              font-family='Arial'
+              dy='.3em'
+            >
+              {item.id}
+            </text>
+          </g>
         );
       }
       return null;
@@ -54,13 +80,25 @@ function CreateSeaRoutes() {
     }) => {
       if (item['kind'] === 'sea') {
         return (
-          <circle
-            r='10'
-            cx={item['x'] * meta['width']}
-            cy={item['y'] * meta['height']}
-            fill='blue'
-            opacity='0.6'
-          />
+          <g>
+            <circle
+              r='10'
+              cx={item['x'] * meta['width']}
+              cy={item['y'] * meta['height']}
+              fill='blue'
+            />
+            <text
+              x={item['x'] * meta['width']}
+              y={item['y'] * meta['height']}
+              text-anchor='middle'
+              fill='white'
+              font-size='10px'
+              font-family='Arial'
+              dy='.3em'
+            >
+              {item.id}
+            </text>
+          </g>
         );
       }
 

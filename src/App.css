@@ -1,15 +1,18 @@
 .parent-box {
   display: flex;
-  justify-content: space-evenly;
   height: 100dvh;
+  overflow: hidden;
   align-items: flex-start;
 }
 
 .game-board {
-  flex-basis: 70%;
+  flex: 0 0 auto;
+  height: 100%;
 }
 
 .gaming-stats {
-  padding: 1rem;
-  flex-basis: 30%;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  flex: 1 1 auto;
 }
