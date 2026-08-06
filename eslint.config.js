@@ -8,16 +8,8 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   // llama.cpp is a vendored checkout that ships its own eslint config (and
   // expects plugins we don't install); .venv and models are not source either.
-  // `board-game` is a stray nested clone of this same repo -- its tsconfig makes
-  // typescript-eslint see two candidate roots and refuse to parse anything.
   // Flat config doesn't read .gitignore, so these have to be named explicitly.
-  globalIgnores([
-    'dist',
-    'llama.cpp',
-    'models',
-    '.venv',
-    'board-game',
-  ]),
+  globalIgnores(['dist', 'llama.cpp', 'models', '.venv', 'darknet']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
