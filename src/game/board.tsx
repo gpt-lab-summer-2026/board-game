@@ -9,7 +9,12 @@ import {
   edges,
   meta,
 } from './boardDataRestructure';
-import { HOME_CITY_IDS, SPECIAL_CITIES } from './rules';
+import {
+  HOME_CITY_IDS,
+  SPECIAL_CITIES,
+  CARD_DISPLAY,
+  type CardKind,
+} from './rules';
 
 function cityFill(id: string) {
   if (HOME_CITY_IDS.includes(id)) return 'gold';
@@ -140,6 +145,53 @@ function CreateFlightRoutes() {
   return <>{objectArray}</>;
 }
 
+// Placeholder for the cardboard piece sitting on each unclaimed city -
+// swap the <rect>/<text> below for an <image> (gif) per CardKind later.
+function CreateCards({
+  cards,
+}: {
+  cards: Record<string, CardKind>;
+}) {
+  const cardMarkers = Object.entries(cards).map(
+    ([cityId, kind]) => {
+      const space = spaceById[cityId];
+      if (!space) return null;
+      const display = CARD_DISPLAY[kind];
+      const x = space.x * meta['width'];
+      const y = space.y * meta['height'] - 40;
+
+      return (
+        <g
+          key={cityId}
+          className={`card-piece card-piece-${kind}`}
+        >
+          <rect
+            x={x - 8}
+            y={y - 8}
+            width='16'
+            height='16'
+            rx='3'
+            fill={display.color}
+            stroke='black'
+          />
+          <text
+            x={x}
+            y={y}
+            text-anchor='middle'
+            fill='black'
+            font-size='11px'
+            font-family='Arial'
+            dy='.3em'
+          >
+            {display.label}
+          </text>
+        </g>
+      );
+    },
+  );
+  return <>{cardMarkers}</>;
+}
+
 const PIECE_SPREAD = 16;
 
 // When several pieces share a space, spread them around the center
@@ -183,7 +235,13 @@ function CreateButtons({ players }: { players: Player[] }) {
   return <>{playersArray}</>;
 }
 
-function Board({ players }: { players: Player[] }) {
+function Board({
+  players,
+  cards,
+}: {
+  players: Player[];
+  cards: Record<string, CardKind>;
+}) {
   return (
     // for loop through board.json end render each object
     <div className='wrapper'>
@@ -200,6 +258,7 @@ function Board({ players }: { players: Player[] }) {
         <CreateSeaRoutes />
         <CreateObjects />
         <CreateFlightRoutes />
+        <CreateCards cards={cards} />
         <CreateButtons players={players} />
       </svg>
     </div>

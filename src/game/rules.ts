@@ -68,6 +68,21 @@ export const SPECIAL_CITIES: Record<string, SpecialEffect> =
     finlayson: 'sahara',
   };
 
+// Placeholder look for each cardboard piece on the board, until real
+// artwork/gif animations are swapped in later.
+export const CARD_DISPLAY: Record<
+  CardKind,
+  { label: string; color: string }
+> = {
+  star: { label: '★', color: '#ffffff' },
+  ruby: { label: 'R', color: '#e0115f' },
+  emerald: { label: 'E', color: '#50c878' },
+  topaz: { label: 'T', color: '#ffc040' },
+  horseshoe: { label: 'H', color: '#b0b0b0' },
+  robber: { label: 'X', color: '#333333' },
+  blank: { label: '', color: '#999999' },
+};
+
 export type PlayerStatus =
   | { type: 'waitingForCard'; cityId: string }
   | { type: 'captured'; effect: 'stHelena' | 'sahara' }

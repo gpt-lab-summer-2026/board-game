@@ -9,7 +9,10 @@ import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
 library.add(fas);
 import { findMoves } from './game/FindMoves';
-import { spaceById, spaces } from './game/boardDataRestructure';
+import {
+  spaceById,
+  spaces,
+} from './game/boardDataRestructure';
 import type { EdgeKind } from './game/boardDataRestructure';
 import {
   createDeck,
@@ -71,7 +74,8 @@ function App() {
   const [turnIndex, setTurnIndex] = useState(0);
   const currentPlayer = players[turnIndex];
 
-  const [moveMode, setMoveMode] = useState<EdgeKind>('land');
+  const [moveMode, setMoveMode] =
+    useState<EdgeKind>('land');
   const [lastRoll, setLastRoll] = useState<number | null>(
     null,
   );
@@ -112,44 +116,61 @@ function App() {
     player: Player,
     kind: CardKind,
     cityId: string,
-  ): Player => {
+  ): { player: Player; message: string } => {
     const isGoldCoast =
       SPECIAL_CITIES[cityId] === 'goldCoast';
     const inventory = { ...player.inventory };
     let money = player.money;
     let status = player.status;
+    let message = '';
 
     switch (kind) {
       case 'blank':
         inventory.empty += 1;
+        message = 'It was an empty piece.';
         if (SPECIAL_CITIES[cityId] === 'slaveCoast') {
           status = { type: 'slave', turnsRemaining: 3 };
+          message +=
+            ' Enslaved at the Slave Coast for 3 turns!';
         }
         break;
       case 'horseshoe':
-        if (starFound) inventory.horseshoe += 1;
+        if (starFound) {
+          inventory.horseshoe += 1;
+          message =
+            'A horseshoe! The star has already been found, so you can still win by racing this home.';
+        } else {
+          message =
+            'A horseshoe, but no one has found the star yet, so it goes back in the box.';
+        }
         break;
       case 'robber':
         inventory.robber += 1;
         money = 0;
+        message = 'A robber! You lost all your money.';
         break;
       case 'topaz':
       case 'emerald':
       case 'ruby': {
         const payout =
-          (CARD_PAYOUT[kind] ?? 0) *
-          (isGoldCoast ? 2 : 1);
+          (CARD_PAYOUT[kind] ?? 0) * (isGoldCoast ? 2 : 1);
         money += payout;
         inventory[kind] += 1;
+        message = `A ${kind}! +${payout}${isGoldCoast ? ' (doubled at the Gold Coast!)' : ''}`;
         break;
       }
       case 'star':
         inventory.africaStar += 1;
         setStarFound(true);
+        message =
+          'The Afrikan tähti! Get it to a home city to win.';
         break;
     }
 
-    return { ...player, money, inventory, status };
+    return {
+      player: { ...player, money, inventory, status },
+      message,
+    };
   };
 
   const applyArrival = (
@@ -187,9 +208,7 @@ function App() {
 
     setPlayers(
       players.map(player =>
-        player.id === movedPlayer.id
-          ? movedPlayer
-          : player,
+        player.id === movedPlayer.id ? movedPlayer : player,
       ),
     );
     setCapetownAwarded(nextCapetownAwarded);
@@ -284,17 +303,22 @@ function App() {
         setMoveError('Not enough money to buy this card.');
         return;
       }
-      player = applyCardEffect(
+      const result = applyCardEffect(
         { ...player, money: player.money - 100 },
         kind,
         cityId,
       );
+      player = result.player;
+      setInfoMessage(result.message);
       removeCard(cityId);
     } else if (action === 'wait') {
       player = {
         ...player,
         status: { type: 'waitingForCard', cityId },
       };
+      setInfoMessage(null);
+    } else {
+      setInfoMessage(null);
     }
 
     setPlayers(
@@ -313,9 +337,7 @@ function App() {
       status: escaped ? null : currentPlayer.status,
     };
     setPlayers(
-      players.map(p =>
-        p.id === updated.id ? updated : p,
-      ),
+      players.map(p => (p.id === updated.id ? updated : p)),
     );
     advanceTurn();
   };
@@ -326,17 +348,22 @@ function App() {
     const cityId = currentPlayer.status.cityId;
     if (roll >= 4) {
       const kind = cards[cityId];
-      const updated = applyCardEffect(
+      const result = applyCardEffect(
         { ...currentPlayer, status: null },
         kind,
         cityId,
       );
       setPlayers(
         players.map(p =>
-          p.id === updated.id ? updated : p,
+          p.id === result.player.id ? result.player : p,
         ),
       );
+      setInfoMessage(result.message);
       removeCard(cityId);
+    } else {
+      setInfoMessage(
+        `Rolled ${roll} — not enough to claim the card yet.`,
+      );
     }
     advanceTurn();
   };
@@ -387,7 +414,7 @@ function App() {
   return (
     <div className='parent-box'>
       <div className='game-board'>
-        <Board players={players} />
+        <Board players={players} cards={cards} />
       </div>
       <div className='game-info'>
         gaming stats
@@ -403,13 +430,10 @@ function App() {
             }}
           />
         )}
-
         {winner && (
           <div>
             <p>
-              <span
-                style={{ color: winner.pieceColor }}
-              >
+              <span style={{ color: winner.pieceColor }}>
                 {winner.name}
               </span>{' '}
               brought the treasure home and wins!
@@ -419,7 +443,6 @@ function App() {
             </button>
           </div>
         )}
-
         {gameState === 'gameOn' &&
           !winner &&
           currentPlayer && (
@@ -474,9 +497,8 @@ function App() {
                   <p>
                     Waiting to claim the card at{' '}
                     {
-                      spaceById[
-                        currentPlayer.status.cityId
-                      ].name
+                      spaceById[currentPlayer.status.cityId]
+                        .name
                     }{' '}
                     — roll 4, 5 or 6.
                   </p>
@@ -547,9 +569,8 @@ function App() {
                   {moveMode === 'sea' &&
                     currentPlayer.money < 100 && (
                       <p>
-                        Not enough money to sail with
-                        dice — you can still sail 2 steps
-                        for free.
+                        Not enough money to sail with dice —
+                        you can still sail 2 steps for free.
                       </p>
                     )}
 
