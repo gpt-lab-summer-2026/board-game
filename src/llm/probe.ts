@@ -6,7 +6,10 @@
 // adding cases here over verifying by hand.
 import { findMoves } from '../game/FindMoves';
 import { deriveMove } from '../game/rules';
-import { spaceById } from '../game/boardDataRestructure';
+import {
+  adjacency,
+  spaceById,
+} from '../game/boardDataRestructure';
 import { chooseDestination, distancesFrom } from './heading';
 import { matchCityName } from './names';
 import { cityIds } from './prompt';
@@ -97,6 +100,54 @@ check(
   ),
   true,
 );
+
+// --- paths -------------------------------------------------------------------
+// Stopping at a city passed on the way (to look at its card) and then walking
+// off the rest of the roll depends entirely on findMoves' path being a real,
+// contiguous route -- so check that rather than trusting it.
+let badStart = 0;
+let badEnd = 0;
+let badLength = 0;
+let disconnected = 0;
+let pathCount = 0;
+for (const from of cityIds) {
+  for (const kind of ['land', 'sea'] as const) {
+    for (const steps of [1, 2, 3, 4, 5, 6]) {
+      for (const [dest, path] of findMoves(from, steps, [kind])) {
+        pathCount++;
+        if (path[0] !== from) badStart++;
+        if (path[path.length - 1] !== dest) badEnd++;
+        // A path may be shorter than the roll (you're allowed to stop early at
+        // a city) but never longer than it.
+        if (path.length - 1 > steps) badLength++;
+        for (let i = 0; i < path.length - 1; i++) {
+          const linked = (adjacency[path[i]] ?? []).some(
+            c => c.to === path[i + 1] && c.kind === kind,
+          );
+          if (!linked) disconnected++;
+        }
+      }
+    }
+  }
+}
+check(`every path starts at the origin (${pathCount} paths)`, badStart, 0);
+check('every path ends at its destination', badEnd, 0);
+check('no path is longer than the roll allows', badLength, 0);
+check('every step of every path follows a real edge of that mode', disconnected, 0);
+
+// A path that stops early must be stopping at a city -- that's the only reason
+// findMoves is allowed to end a route before the roll is spent.
+let earlyNonCity = 0;
+for (const from of cityIds) {
+  for (const steps of [2, 4, 6]) {
+    for (const [dest, path] of findMoves(from, steps, ['land'])) {
+      if (path.length - 1 < steps && spaceById[dest]?.kind !== 'city') {
+        earlyNonCity++;
+      }
+    }
+  }
+}
+check('a route only ends early on a city', earlyNonCity, 0);
 
 // every chosen square must actually be a legal landing square
 let illegal = 0;

@@ -28,6 +28,14 @@ export type ResolvedIntent =
       mode: EdgeKind;
       cost: number;
       heading: string;
+      /**
+       * Every space walked through, starting at the player's current position
+       * and ending at destinationId. The caller needs this to notice cities
+       * passed on the way -- stopping at one to look at its card is a decision
+       * only the player can make.
+       */
+      path: string[];
+      steps: number;
       /** Filled in when the player stops short of the city they named. */
       note: string | null;
     }
@@ -149,11 +157,10 @@ export async function resolveMoveIntent(args: {
     };
   }
 
-  const candidateIds = [
-    ...findMoves(args.currentPlaceId, derived.steps, [
-      mode,
-    ]).keys(),
-  ];
+  const moves = findMoves(args.currentPlaceId, derived.steps, [
+    mode,
+  ]);
+  const candidateIds = [...moves.keys()];
   if (candidateIds.length === 0) {
     return {
       kind: 'unclear',
@@ -174,18 +181,33 @@ export async function resolveMoveIntent(args: {
   }
 
   const arrived = destinationId === heading;
+  const path = moves.get(destinationId) ?? [args.currentPlaceId];
+  const viaCities = path
+    .slice(1, -1)
+    .filter(id => spaceById[id]?.kind === 'city')
+    .map(spaceLabel);
+
+  let note: string | null = null;
+  if (!arrived) {
+    note = `Heading for ${spaceLabel(heading)} — got as far as ${
+      spaceById[destinationId]?.kind === 'city'
+        ? spaceLabel(destinationId)
+        : 'an unnamed spot on the route'
+    }.`;
+  }
+  if (viaCities.length > 0) {
+    const via = `Passing through ${viaCities.join(', ')}.`;
+    note = note ? `${note} ${via}` : via;
+  }
+
   return {
     kind: 'move',
     destinationId,
     mode,
     cost: derived.cost,
     heading,
-    note: arrived
-      ? null
-      : `Heading for ${spaceLabel(heading)} — got as far as ${
-          spaceById[destinationId]?.kind === 'city'
-            ? spaceLabel(destinationId)
-            : 'an unnamed spot on the route'
-        }.`,
+    path,
+    steps: derived.steps,
+    note,
   };
 }

@@ -8,6 +8,7 @@ import Board from './game/board';
 import RollDice from './game/RollDice';
 import GameStats, {
   type GameState,
+  type PlayerSetup,
 } from './game/GameStats';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
@@ -28,6 +29,7 @@ import {
   type PlayerStatus,
 } from './game/rules';
 import { resolveMoveIntent } from './llm/intent';
+import { chooseDestination } from './llm/heading';
 
 export type Player = {
   id: string;
@@ -47,11 +49,11 @@ const PIECE_COLORS = [
   '#911eb4',
 ];
 
-function createPlayers(names: string[]): Player[] {
-  return names.map((name, index) => ({
+function createPlayers(setups: PlayerSetup[]): Player[] {
+  return setups.map((setup, index) => ({
     id: `player-${index + 1}`,
-    name,
-    placeId: HOME_CITY_IDS[index % HOME_CITY_IDS.length],
+    name: setup.name,
+    placeId: setup.startId,
     pieceColor: PIECE_COLORS[index % PIECE_COLORS.length],
     money: 300,
     inventory: {
@@ -109,6 +111,15 @@ function App() {
   >(null);
   const llmAbort = useRef<AbortController | null>(null);
 
+  // Set when a move stopped early at a city that still has a face-down card, so
+  // the player can look at it. Declining leaves the rest of the roll unspent,
+  // and this is what lets them walk it off (see continueMove).
+  const [pendingMove, setPendingMove] = useState<{
+    heading: string;
+    mode: EdgeKind;
+    remainingSteps: number;
+  } | null>(null);
+
   const [cards, setCards] = useState<
     Record<string, CardKind>
   >({});
@@ -122,6 +133,14 @@ function App() {
 
   const advanceTurn = () => {
     setTurnIndex(index => (index + 1) % players.length);
+    // Every path off a turn runs through here, so this is the one place that
+    // can guarantee a roll never survives into the next player's turn. Without
+    // it, a player who got captured or claimed a card handed their unspent roll
+    // to whoever went next.
+    setLastRoll(null);
+    setMoveError(null);
+    setLlmMessage(null);
+    setPendingMove(null);
   };
 
   const removeCard = (cityId: string) => {
@@ -291,7 +310,78 @@ function App() {
       return;
     }
 
-    applyArrival(destination, cost);
+    travelPath(moves.get(destination) ?? [currentPlayer.placeId, destination], cost, {
+      heading: destination,
+      mode: moveMode,
+    });
+  };
+
+  /**
+   * Walk `path` (current position first, destination last), stopping early at
+   * the first city along the way that still has a face-down card.
+   *
+   * Passing a city with an unclaimed card is a decision, not scenery: the
+   * player may want to stop and look at it. So we halt there and remember how
+   * much of the roll is left, which is what lets them walk off the remainder
+   * if they decide against opening it (see continueMove). Landing on the final
+   * square behaves exactly as it did before.
+   */
+  const travelPath = (
+    path: string[],
+    cost: number,
+    onward: { heading: string; mode: EdgeKind },
+  ) => {
+    // path[0] is where the player already stands, and the last entry is the
+    // destination -- which applyArrival already handles as a card stop.
+    const viaIndex = path
+      .slice(1, -1)
+      .findIndex(
+        id => spaceById[id]?.kind === 'city' && cards[id],
+      );
+
+    if (viaIndex === -1) {
+      setPendingMove(null);
+      applyArrival(path[path.length - 1], cost);
+      return;
+    }
+
+    const stopIndex = viaIndex + 1; // undo the slice(1, …) offset
+    setPendingMove({
+      heading: onward.heading,
+      mode: onward.mode,
+      remainingSteps: path.length - 1 - stopIndex,
+    });
+    // The whole fare is charged once, at the point of departure -- stopping to
+    // look at a card partway is not a second journey.
+    applyArrival(path[stopIndex], cost);
+  };
+
+  /** Spend what's left of the roll after declining a card en route. */
+  const continueMove = () => {
+    if (!pendingMove) return;
+    const { heading, mode, remainingSteps } = pendingMove;
+    const moves = findMoves(
+      currentPlayer.placeId,
+      remainingSteps,
+      [mode],
+    );
+    const next = chooseDestination(
+      [...moves.keys()],
+      heading,
+      [mode],
+    );
+    if (next === null) {
+      setMoveError(
+        `No ${mode} route onward toward ${spaceById[heading]?.name ?? heading}.`,
+      );
+      setPendingMove(null);
+      return;
+    }
+    setLlmMessage(null);
+    travelPath(moves.get(next) ?? [currentPlayer.placeId, next], 0, {
+      heading,
+      mode,
+    });
   };
 
   /**
@@ -328,7 +418,10 @@ function App() {
       // Mirror the mode the player actually asked for, so the buttons agree with
       // what was just charged for.
       setMoveMode(result.mode);
-      applyArrival(result.destinationId, result.cost);
+      travelPath(result.path, result.cost, {
+        heading: result.heading,
+        mode: result.mode,
+      });
     } finally {
       setLlmPending(false);
       llmAbort.current = null;
@@ -369,6 +462,20 @@ function App() {
     );
     setPendingCard(null);
     setMoveError(null);
+
+    // Walking away from a card you passed on the way through doesn't cost you
+    // the rest of the roll -- you stopped to look, not to end your turn. Buying
+    // it or waiting for it does end the move.
+    const hasRemainder =
+      action === 'skip' &&
+      pendingMove !== null &&
+      pendingMove.remainingSteps > 0;
+    if (hasRemainder) {
+      setInfoMessage(
+        `Left the card. ${pendingMove?.remainingSteps} step(s) of your roll still to spend.`,
+      );
+      return;
+    }
     advanceTurn();
   };
 
@@ -465,8 +572,8 @@ function App() {
           <GameStats
             gameState={gameState}
             onStartGame={() => setGameState('starting')}
-            onBeginGame={names => {
-              setPlayers(createPlayers(names));
+            onBeginGame={setups => {
+              setPlayers(createPlayers(setups));
               setCards(dealCards());
               setTurnIndex(0);
               setGameState('gameOn');
@@ -576,6 +683,32 @@ function App() {
                 </div>
               )}
 
+              {!currentPlayer.status &&
+                !pendingCard &&
+                pendingMove &&
+                pendingMove.remainingSteps > 0 && (
+                  <div>
+                    <p>
+                      {pendingMove.remainingSteps} step(s)
+                      left, still heading for{' '}
+                      {spaceById[pendingMove.heading]?.name ??
+                        pendingMove.heading}
+                      .
+                    </p>
+                    <button onClick={continueMove}>
+                      Continue moving
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPendingMove(null);
+                        advanceTurn();
+                      }}
+                    >
+                      Stop here
+                    </button>
+                  </div>
+                )}
+
               {!currentPlayer.status && !pendingCard && (
                 <>
                   <div className='move-mode'>
@@ -610,6 +743,13 @@ function App() {
                       currentPlayer.money >= 100)) && (
                     <>
                       <RollDice
+                        // One roll per turn. Without this you can simply keep
+                        // clicking until you like the number -- switching to Air
+                        // and back just made it obvious, because Air needs no
+                        // roll so the die display resets while lastRoll stands.
+                        disabled={
+                          llmPending || lastRoll !== null
+                        }
                         onRoll={value => {
                           // Ignored mid-request: a new roll would invalidate the
                           // steps the pending move was resolved against.
@@ -618,7 +758,10 @@ function App() {
                         }}
                       />
                       {lastRoll !== null && (
-                        <p>Last roll: {lastRoll}</p>
+                        <p>
+                          Last roll: {lastRoll} (already
+                          rolled this turn)
+                        </p>
                       )}
                     </>
                   )}
@@ -648,13 +791,16 @@ function App() {
                   </label>
                   {moveError && <p>{moveError}</p>}
 
+                  {/* Typed, not spoken -- the microphone pipeline in voice/
+                      isn't wired to the browser yet. Labelled explicitly
+                      because "say it" read as "talk to it". */}
                   <label>
-                    say it instead:{' '}
+                    type a move:{' '}
                     <input
                       name='nlInput'
                       type='text'
                       value={nlText}
-                      placeholder='heading for Hakametsä'
+                      placeholder='e.g. heading for Hakametsä'
                       disabled={llmPending}
                       onChange={event =>
                         setNlText(event.target.value)
@@ -664,6 +810,11 @@ function App() {
                       onClick={askClick}
                       disabled={
                         llmPending || nlText.trim() === ''
+                      }
+                      title={
+                        nlText.trim() === ''
+                          ? 'Type where you are heading first'
+                          : 'Send to the language model'
                       }
                     >
                       Ask
