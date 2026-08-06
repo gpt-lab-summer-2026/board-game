@@ -50,7 +50,7 @@ export function createDeck(
 // The Tangier / Cairo equivalents on this board: players start here,
 // and getting the star (or, once it's found, a horseshoe) back to
 // either one wins the game.
-export const HOME_CITY_IDS = ['keskustori', 'Tammelan tori'];
+export const HOME_CITY_IDS = ['keskustori', 'tammelan-tori'];
 
 export type SpecialEffect =
   | 'capetown'

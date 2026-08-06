@@ -1,4 +1,4 @@
-import rawBoard from './board.json';
+import rawBoard from './board2.json';
 
 export type SpaceKind = 'city' | 'step' | 'sea';
 export type EdgeKind = 'land' | 'sea' | 'flight';

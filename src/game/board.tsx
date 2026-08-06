@@ -1,5 +1,5 @@
 import type { Player } from '../App';
-import mapPath from '../assets/map1.jpg';
+import mapPath from '../assets/kartta2.png';
 
 import './game.css';
 
@@ -17,12 +17,156 @@ import {
 } from './rules';
 
 function cityFill(id: string) {
-  if (HOME_CITY_IDS.includes(id)) return 'gold';
+  if (HOME_CITY_IDS.includes(id)) return '#efbc3b';
   if (SPECIAL_CITIES[id]) return 'purple';
-  return 'red';
+  return '#79942e';
 }
 
-function CreateObjects() {
+// Splits a label into lines no longer than maxChars, breaking on
+// spaces or hyphens (keeping the hyphen at the end of its line) so
+// long place names wrap instead of overflowing their circle.
+function wrapLabel(
+  label: string,
+  maxChars: number,
+): string[] {
+  const tokens = label.match(/[^\s-]+[\s-]?/g) ?? [label];
+  const lines: string[] = [];
+  let current = '';
+  for (const token of tokens) {
+    if (
+      current &&
+      (current + token).trim().length > maxChars
+    ) {
+      lines.push(current.trim());
+      current = token;
+    } else {
+      current += token;
+    }
+  }
+  if (current.trim()) lines.push(current.trim());
+  return lines;
+}
+
+function MultilineLabel({
+  x,
+  y,
+  label,
+  fontSize,
+  maxChars,
+}: {
+  x: number;
+  y: number;
+  label: string;
+  fontSize: number;
+  maxChars: number;
+}) {
+  const lines = wrapLabel(label, maxChars);
+  const lineHeightEm = 1.1;
+  const firstDy =
+    0.3 - ((lines.length - 1) / 2) * lineHeightEm;
+
+  return (
+    <text
+      x={x}
+      y={y}
+      text-anchor='middle'
+      fill='white'
+      font-size={`${fontSize}px`}
+      font-family='Arial'
+    >
+      {lines.map((line, i) => (
+        <tspan
+          key={i}
+          x={x}
+          dy={`${i === 0 ? firstDy : lineHeightEm}em`}
+        >
+          {line}
+        </tspan>
+      ))}
+    </text>
+  );
+}
+
+// All place-name labels, rendered as their own top-most layer (see
+// bottom of Board) so text always stays readable above routes,
+// cards, and player pieces.
+function CreateLabels() {
+  const labels = spaces.map(
+    (item: {
+      id: string;
+      kind: string;
+      x: number;
+      y: number;
+    }) => {
+      const x = item.x * meta['width'];
+      const y = item.y * meta['height'];
+
+      if (item.kind === 'city') {
+        return (
+          <MultilineLabel
+            key={item.id}
+            x={x}
+            y={y}
+            label={item.id}
+            fontSize={40}
+            maxChars={9}
+          />
+        );
+      }
+      if (item.kind === 'step') {
+        return (
+          <MultilineLabel
+            key={item.id}
+            x={x}
+            y={y}
+            label={item.id}
+            fontSize={25}
+            maxChars={6}
+          />
+        );
+      }
+      if (item.kind === 'sea') {
+        return (
+          <MultilineLabel
+            key={item.id}
+            x={x}
+            y={y}
+            label={item.id}
+            fontSize={10}
+            maxChars={6}
+          />
+        );
+      }
+      return null;
+    },
+  );
+  return <>{labels}</>;
+}
+
+function CreateLandRoutes() {
+  const objectArray = edges.map(item => {
+    if (item['kind'] === 'land') {
+      const a = spaceById[item.a];
+      const b = spaceById[item.b];
+      return (
+        <line
+          key={`${item.a}-${item.b}`}
+          x1={a.x * meta['width']}
+          y1={a.y * meta['height']}
+          x2={b.x * meta['width']}
+          y2={b.y * meta['height']}
+          stroke='black'
+          stroke-width='3'
+        />
+      );
+    }
+
+    return null;
+  });
+  return <>{objectArray}</>;
+}
+
+function CreateCities() {
   const objectArray = spaces.map(
     (item: {
       id: string;
@@ -30,54 +174,64 @@ function CreateObjects() {
       x: number;
       y: number;
     }) => {
-      if (item['kind'] === 'step') {
-        return (
-          <g>
-            <circle
-              r='10'
-              cx={item['x'] * meta['width']}
-              cy={item['y'] * meta['height']}
-              fill='blue'
-            />
-            <text
-              x={item['x'] * meta['width']}
-              y={item['y'] * meta['height']}
-              text-anchor='middle'
-              fill='white'
-              font-size='10px'
-              font-family='Arial'
-              dy='.3em'
-            >
-              {item.id}
-            </text>
-          </g>
-        );
-      } else if (item['kind'] === 'city') {
-        return (
-          <g>
-            <circle
-              r='30'
-              cx={item['x'] * meta['width']}
-              cy={item['y'] * meta['height']}
-              fill={cityFill(item.id)}
-            />
-            <text
-              x={item['x'] * meta['width']}
-              y={item['y'] * meta['height']}
-              text-anchor='middle'
-              fill='white'
-              font-size='15px'
-              font-family='Arial'
-              dy='.3em'
-            >
-              {item.id}
-            </text>
-          </g>
-        );
-      }
-      return null;
+      if (item['kind'] !== 'city') return null;
+      return (
+        <circle
+          key={item.id}
+          r='70'
+          cx={item['x'] * meta['width']}
+          cy={item['y'] * meta['height']}
+          fill={cityFill(item.id)}
+        />
+      );
     },
   );
+  return <>{objectArray}</>;
+}
+
+function CreateSteps() {
+  const objectArray = spaces.map(
+    (item: {
+      id: string;
+      kind: string;
+      x: number;
+      y: number;
+    }) => {
+      if (item['kind'] !== 'step') return null;
+      return (
+        <circle
+          key={item.id}
+          r='25'
+          cx={item['x'] * meta['width']}
+          cy={item['y'] * meta['height']}
+          fill='blue'
+        />
+      );
+    },
+  );
+  return <>{objectArray}</>;
+}
+
+function CreateWaterRoutes() {
+  const objectArray = edges.map(item => {
+    if (item['kind'] === 'sea') {
+      const a = spaceById[item.a];
+      const b = spaceById[item.b];
+      return (
+        <line
+          key={`${item.a}-${item.b}`}
+          x1={a.x * meta['width']}
+          y1={a.y * meta['height']}
+          x2={b.x * meta['width']}
+          y2={b.y * meta['height']}
+          stroke='#2fabc1'
+          stroke-width='5'
+        />
+      );
+    }
+
+    return null;
+  });
   return <>{objectArray}</>;
 }
 
@@ -92,25 +246,13 @@ function CreateSeaRoutes() {
     }) => {
       if (item['kind'] === 'sea') {
         return (
-          <g>
-            <circle
-              r='10'
-              cx={item['x'] * meta['width']}
-              cy={item['y'] * meta['height']}
-              fill='blue'
-            />
-            <text
-              x={item['x'] * meta['width']}
-              y={item['y'] * meta['height']}
-              text-anchor='middle'
-              fill='white'
-              font-size='10px'
-              font-family='Arial'
-              dy='.3em'
-            >
-              {item.id}
-            </text>
-          </g>
+          <circle
+            key={item.id}
+            r='25'
+            cx={item['x'] * meta['width']}
+            cy={item['y'] * meta['height']}
+            fill='#2fabc1'
+          />
         );
       }
 
@@ -197,10 +339,12 @@ const PIECE_SPREAD = 16;
 // When several pieces share a space, spread them around the center
 // in a small ring instead of stacking them exactly on top of each
 // other, so every piece stays visible.
-function pieceOffset(indexInGroup: number, groupSize: number) {
+function pieceOffset(
+  indexInGroup: number,
+  groupSize: number,
+) {
   if (groupSize <= 1) return { dx: 0, dy: 0 };
-  const angle =
-    (2 * Math.PI * indexInGroup) / groupSize;
+  const angle = (2 * Math.PI * indexInGroup) / groupSize;
   return {
     dx: Math.cos(angle) * PIECE_SPREAD,
     dy: Math.sin(angle) * PIECE_SPREAD,
@@ -252,14 +396,18 @@ function Board({
       />
       <svg
         className='svg'
-        viewBox='0 0 733 1024'
+        viewBox={`0 0 ${meta.width} ${meta.height}`}
         xmlns='http://www.w3.org/2000/svg'
       >
+        <CreateLandRoutes />
+        <CreateWaterRoutes />
         <CreateSeaRoutes />
-        <CreateObjects />
+        <CreateCities />
+        <CreateSteps />
         <CreateFlightRoutes />
         <CreateCards cards={cards} />
         <CreateButtons players={players} />
+        <CreateLabels />
       </svg>
     </div>
   );
