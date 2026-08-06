@@ -32,7 +32,7 @@ export type Connection = {
   kind: EdgeKind;
 };
 
-// spaces and edges from board.json to their own consts
+// spaces and edges from the board data to their own consts
 const spaces = rawBoard.spaces as Space[];
 const edges = rawBoard.edges as Edge[];
 const meta = rawBoard.meta as Meta;

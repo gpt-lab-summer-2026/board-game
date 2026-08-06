@@ -387,7 +387,7 @@ function Board({
   cards: Record<string, CardKind>;
 }) {
   return (
-    // for loop through board.json end render each object
+    // for loop through the board data and render each object
     <div className='wrapper'>
       <img
         className='wrapper-img'
