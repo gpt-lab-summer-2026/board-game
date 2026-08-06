@@ -69,10 +69,10 @@ function MultilineLabel({
     <text
       x={x}
       y={y}
-      text-anchor='middle'
+      textAnchor='middle'
       fill='white'
-      font-size={`${fontSize}px`}
-      font-family='Arial'
+      fontSize={`${fontSize}px`}
+      fontFamily='Arial'
     >
       {lines.map((line, i) => (
         <tspan
@@ -156,7 +156,7 @@ function CreateLandRoutes() {
           x2={b.x * meta['width']}
           y2={b.y * meta['height']}
           stroke='black'
-          stroke-width='3'
+          strokeWidth='3'
         />
       );
     }
@@ -225,7 +225,7 @@ function CreateWaterRoutes() {
           x2={b.x * meta['width']}
           y2={b.y * meta['height']}
           stroke='#2fabc1'
-          stroke-width='5'
+          strokeWidth='5'
         />
       );
     }
@@ -276,7 +276,7 @@ function CreateFlightRoutes() {
           x2={city2['x'] * meta['width']}
           y2={city2['y'] * meta['height']}
           stroke='red'
-          stroke-width='5'
+          strokeWidth='5'
           strokeDasharray='10'
         />
       );
@@ -319,10 +319,10 @@ function CreateCards({
           <text
             x={x}
             y={y}
-            text-anchor='middle'
+            textAnchor='middle'
             fill='black'
-            font-size='11px'
-            font-family='Arial'
+            fontSize='11px'
+            fontFamily='Arial'
             dy='.3em'
           >
             {display.label}
