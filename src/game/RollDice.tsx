@@ -1,5 +1,5 @@
 // RollDice.js File
-import React, { Component } from 'react';
+import { Component } from 'react';
 import './RollDice.css';
 import Die from './Die';
 

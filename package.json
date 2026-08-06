@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "llm": "scripts/llama-server.sh",
+    "probe": "rolldown src/llm/probe.ts -o node_modules/.tmp/probe.mjs --format esm --platform node && node node_modules/.tmp/probe.mjs"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.3.1",

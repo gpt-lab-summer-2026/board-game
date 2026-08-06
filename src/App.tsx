@@ -1,4 +1,8 @@
-import { useState, type ChangeEvent } from 'react';
+import {
+  useRef,
+  useState,
+  type ChangeEvent,
+} from 'react';
 import './App.css';
 import Board from './game/board';
 import RollDice from './game/RollDice';
@@ -16,12 +20,14 @@ import {
 import type { EdgeKind } from './game/boardDataRestructure';
 import {
   createDeck,
+  deriveMove,
   CARD_PAYOUT,
   HOME_CITY_IDS,
   SPECIAL_CITIES,
   type CardKind,
   type PlayerStatus,
 } from './game/rules';
+import { resolveMoveIntent } from './llm/intent';
 
 export type Player = {
   id: string;
@@ -88,6 +94,20 @@ function App() {
   >(null);
   const [gameState, setGameState] =
     useState<GameState>('notStarted');
+
+  // Natural-language move input. `llmPending` is what keeps the async path safe:
+  // applyArrival and friends read players/cards/starFound from the render
+  // closure, so resolving a move after an await would otherwise write back a
+  // stale snapshot. Rather than detect that afterwards, every control that could
+  // change the relevant state is inert while a request is in flight -- so the
+  // closure is still current when it resolves. Nothing else mutates state (no
+  // effects, no timers beyond RollDice's cosmetic delay).
+  const [nlText, setNlText] = useState('');
+  const [llmPending, setLlmPending] = useState(false);
+  const [llmMessage, setLlmMessage] = useState<
+    string | null
+  >(null);
+  const llmAbort = useRef<AbortController | null>(null);
 
   const [cards, setCards] = useState<
     Record<string, CardKind>
@@ -236,34 +256,16 @@ function App() {
   };
 
   const moveClick = () => {
-    let steps: number;
-    if (moveMode === 'flight') {
-      steps = 1;
-    } else if (
-      moveMode === 'sea' &&
-      currentPlayer.money < 100
-    ) {
-      steps = 2;
-    } else if (lastRoll === null) {
-      setMoveError('Roll the dice first.');
-      return;
-    } else {
-      steps = lastRoll;
-    }
-
-    const cost =
-      moveMode === 'flight'
-        ? 300
-        : moveMode === 'sea' && currentPlayer.money >= 100
-          ? 100
-          : 0;
-
-    if (cost > 0 && currentPlayer.money < cost) {
-      setMoveError(
-        `You need at least ${cost} to travel by ${moveMode}.`,
-      );
+    const derived = deriveMove(
+      moveMode,
+      currentPlayer.money,
+      lastRoll,
+    );
+    if (!derived.ok) {
+      setMoveError(derived.error);
       return;
     }
+    const { steps, cost } = derived;
 
     const destination = text.trim();
     if (destination === '') {
@@ -290,6 +292,47 @@ function App() {
     }
 
     applyArrival(destination, cost);
+  };
+
+  /**
+   * Resolve a spoken/typed move like "heading for Hakametsä" or "fly to
+   * Turtola". gemma3 only extracts a heading city and a travel mode; where the
+   * piece actually lands is decided here by the same findMoves the typed path
+   * uses. Takes ~10s on this machine, hence the pending state and cancel.
+   */
+  const askClick = async () => {
+    if (llmPending) return;
+    const controller = new AbortController();
+    llmAbort.current = controller;
+    setLlmPending(true);
+    setLlmMessage('Thinking…');
+    setMoveError(null);
+
+    try {
+      const result = await resolveMoveIntent({
+        transcript: nlText,
+        currentPlaceId: currentPlayer.placeId,
+        money: currentPlayer.money,
+        lastRoll,
+        uiMode: moveMode,
+        signal: controller.signal,
+      });
+
+      if (result.kind === 'unclear') {
+        setLlmMessage(result.message);
+        return;
+      }
+
+      setLlmMessage(result.note);
+      setNlText('');
+      // Mirror the mode the player actually asked for, so the buttons agree with
+      // what was just charged for.
+      setMoveMode(result.mode);
+      applyArrival(result.destinationId, result.cost);
+    } finally {
+      setLlmPending(false);
+      llmAbort.current = null;
+    }
   };
 
   const resolveCard = (action: 'pay' | 'wait' | 'skip') => {
@@ -537,19 +580,25 @@ function App() {
                 <>
                   <div className='move-mode'>
                     <button
-                      disabled={moveMode === 'land'}
+                      disabled={
+                        moveMode === 'land' || llmPending
+                      }
                       onClick={() => setMoveMode('land')}
                     >
                       Land
                     </button>
                     <button
-                      disabled={moveMode === 'sea'}
+                      disabled={
+                        moveMode === 'sea' || llmPending
+                      }
                       onClick={() => setMoveMode('sea')}
                     >
                       Sea (100)
                     </button>
                     <button
-                      disabled={moveMode === 'flight'}
+                      disabled={
+                        moveMode === 'flight' || llmPending
+                      }
                       onClick={() => setMoveMode('flight')}
                     >
                       Air (300)
@@ -560,7 +609,14 @@ function App() {
                     (moveMode === 'sea' &&
                       currentPlayer.money >= 100)) && (
                     <>
-                      <RollDice onRoll={setLastRoll} />
+                      <RollDice
+                        onRoll={value => {
+                          // Ignored mid-request: a new roll would invalidate the
+                          // steps the pending move was resolved against.
+                          if (!llmPending)
+                            setLastRoll(value);
+                        }}
+                      />
                       {lastRoll !== null && (
                         <p>Last roll: {lastRoll}</p>
                       )}
@@ -581,12 +637,48 @@ function App() {
                       type='text'
                       value={text}
                       onChange={change}
+                      disabled={llmPending}
                     />
-                    <button onClick={moveClick}>
+                    <button
+                      onClick={moveClick}
+                      disabled={llmPending}
+                    >
                       Move
                     </button>
                   </label>
                   {moveError && <p>{moveError}</p>}
+
+                  <label>
+                    say it instead:{' '}
+                    <input
+                      name='nlInput'
+                      type='text'
+                      value={nlText}
+                      placeholder='heading for Hakametsä'
+                      disabled={llmPending}
+                      onChange={event =>
+                        setNlText(event.target.value)
+                      }
+                    />
+                    <button
+                      onClick={askClick}
+                      disabled={
+                        llmPending || nlText.trim() === ''
+                      }
+                    >
+                      Ask
+                    </button>
+                  </label>
+                  {llmPending && (
+                    <button
+                      onClick={() =>
+                        llmAbort.current?.abort()
+                      }
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  {llmMessage && <p>{llmMessage}</p>}
                 </>
               )}
             </>
