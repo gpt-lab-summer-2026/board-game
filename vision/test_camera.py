@@ -37,6 +37,11 @@ def parse_args():
         help="keep detecting until Ctrl+C (needs --dict)",
     )
     p.add_argument(
+        "--objects",
+        action="store_true",
+        help="also run general object detection (people, dice, hands) -- see vision/objects.py",
+    )
+    p.add_argument(
         "--out",
         default="/tmp/aruco_test.jpg",
         help="where to write the annotated frame",
@@ -110,7 +115,21 @@ def main():
 
         import cv2
 
-        cv2.imwrite(args.out, annotate(frame, best))
+        annotated = annotate(frame, best)
+
+        if args.objects:
+            from .objects import ObjectDetector
+            from .objects import annotate as annotate_objects
+
+            started = time.monotonic()
+            detections = ObjectDetector().detect(frame)
+            took = (time.monotonic() - started) * 1000
+            print(f"\nobjects ({took:.0f}ms): {len(detections)} found")
+            for d in sorted(detections, key=lambda d: -d.confidence):
+                print(f"  {d.label:14} {d.confidence:.0%} at ({d.center[0]:.0f},{d.center[1]:.0f})")
+            annotated = annotate_objects(annotated, detections)
+
+        cv2.imwrite(args.out, annotated)
         print(f"annotated frame -> {args.out}")
 
 
