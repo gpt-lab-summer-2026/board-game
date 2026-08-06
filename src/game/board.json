@@ -122,7 +122,7 @@
       "y": 0.24736
     },
     {
-      "id": "tampere-talo",
+      "id": "Tammelan tori",
       "kind": "city",
       "name": "Tampere talo",
       "x": 0.69673,
@@ -1450,7 +1450,7 @@
     },
     {
       "a": "s14",
-      "b": "tampere-talo",
+      "b": "Tammelan tori",
       "kind": "land"
     },
     {
@@ -2380,11 +2380,11 @@
     },
     {
       "a": "s161",
-      "b": "tampere-talo",
+      "b": "Tammelan tori",
       "kind": "sea"
     },
     {
-      "a": "tampere-talo",
+      "a": "Tammelan tori",
       "b": "s162",
       "kind": "sea"
     },
@@ -2559,7 +2559,7 @@
       "kind": "flight"
     },
     {
-      "a": "tampere-talo",
+      "a": "Tammelan tori",
       "b": "sorsapuisto",
       "kind": "flight"
     },

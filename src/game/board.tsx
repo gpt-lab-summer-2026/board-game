@@ -1,5 +1,7 @@
+import type { Player } from '../App';
 import mapPath from '../assets/map1.jpg';
-import './board.css';
+
+import './game.css';
 
 import {
   spaceById,
@@ -7,6 +9,18 @@ import {
   edges,
   meta,
 } from './boardDataRestructure';
+import {
+  HOME_CITY_IDS,
+  SPECIAL_CITIES,
+  CARD_DISPLAY,
+  type CardKind,
+} from './rules';
+
+function cityFill(id: string) {
+  if (HOME_CITY_IDS.includes(id)) return 'gold';
+  if (SPECIAL_CITIES[id]) return 'purple';
+  return 'red';
+}
 
 function CreateObjects() {
   const objectArray = spaces.map(
@@ -18,21 +32,47 @@ function CreateObjects() {
     }) => {
       if (item['kind'] === 'step') {
         return (
-          <circle
-            r='10'
-            cx={item['x'] * meta['width']}
-            cy={item['y'] * meta['height']}
-            fill='blue'
-          />
+          <g>
+            <circle
+              r='10'
+              cx={item['x'] * meta['width']}
+              cy={item['y'] * meta['height']}
+              fill='blue'
+            />
+            <text
+              x={item['x'] * meta['width']}
+              y={item['y'] * meta['height']}
+              text-anchor='middle'
+              fill='white'
+              font-size='10px'
+              font-family='Arial'
+              dy='.3em'
+            >
+              {item.id}
+            </text>
+          </g>
         );
       } else if (item['kind'] === 'city') {
         return (
-          <circle
-            r='30'
-            cx={item['x'] * meta['width']}
-            cy={item['y'] * meta['height']}
-            fill='red'
-          />
+          <g>
+            <circle
+              r='30'
+              cx={item['x'] * meta['width']}
+              cy={item['y'] * meta['height']}
+              fill={cityFill(item.id)}
+            />
+            <text
+              x={item['x'] * meta['width']}
+              y={item['y'] * meta['height']}
+              text-anchor='middle'
+              fill='white'
+              font-size='15px'
+              font-family='Arial'
+              dy='.3em'
+            >
+              {item.id}
+            </text>
+          </g>
         );
       }
       return null;
@@ -52,13 +92,25 @@ function CreateSeaRoutes() {
     }) => {
       if (item['kind'] === 'sea') {
         return (
-          <circle
-            r='10'
-            cx={item['x'] * meta['width']}
-            cy={item['y'] * meta['height']}
-            fill='blue'
-            opacity='0.6'
-          />
+          <g>
+            <circle
+              r='10'
+              cx={item['x'] * meta['width']}
+              cy={item['y'] * meta['height']}
+              fill='blue'
+            />
+            <text
+              x={item['x'] * meta['width']}
+              y={item['y'] * meta['height']}
+              text-anchor='middle'
+              fill='white'
+              font-size='10px'
+              font-family='Arial'
+              dy='.3em'
+            >
+              {item.id}
+            </text>
+          </g>
         );
       }
 
@@ -93,7 +145,103 @@ function CreateFlightRoutes() {
   return <>{objectArray}</>;
 }
 
-function Board() {
+// Placeholder for the cardboard piece sitting on each unclaimed city -
+// swap the <rect>/<text> below for an <image> (gif) per CardKind later.
+function CreateCards({
+  cards,
+}: {
+  cards: Record<string, CardKind>;
+}) {
+  const cardMarkers = Object.entries(cards).map(
+    ([cityId, kind]) => {
+      const space = spaceById[cityId];
+      if (!space) return null;
+      const display = CARD_DISPLAY[kind];
+      const x = space.x * meta['width'];
+      const y = space.y * meta['height'] - 40;
+
+      return (
+        <g
+          key={cityId}
+          className={`card-piece card-piece-${kind}`}
+        >
+          <rect
+            x={x - 8}
+            y={y - 8}
+            width='16'
+            height='16'
+            rx='3'
+            fill={display.color}
+            stroke='black'
+          />
+          <text
+            x={x}
+            y={y}
+            text-anchor='middle'
+            fill='black'
+            font-size='11px'
+            font-family='Arial'
+            dy='.3em'
+          >
+            {display.label}
+          </text>
+        </g>
+      );
+    },
+  );
+  return <>{cardMarkers}</>;
+}
+
+const PIECE_SPREAD = 16;
+
+// When several pieces share a space, spread them around the center
+// in a small ring instead of stacking them exactly on top of each
+// other, so every piece stays visible.
+function pieceOffset(indexInGroup: number, groupSize: number) {
+  if (groupSize <= 1) return { dx: 0, dy: 0 };
+  const angle =
+    (2 * Math.PI * indexInGroup) / groupSize;
+  return {
+    dx: Math.cos(angle) * PIECE_SPREAD,
+    dy: Math.sin(angle) * PIECE_SPREAD,
+  };
+}
+
+function CreateButtons({ players }: { players: Player[] }) {
+  const byPlace = new Map<string, Player[]>();
+  for (const player of players) {
+    const group = byPlace.get(player.placeId) ?? [];
+    group.push(player);
+    byPlace.set(player.placeId, group);
+  }
+
+  const playersArray = players.map(player => {
+    const playerSpace = spaceById[player.placeId];
+    const group = byPlace.get(player.placeId) ?? [player];
+    const offset = pieceOffset(
+      group.indexOf(player),
+      group.length,
+    );
+    return (
+      <circle
+        key={player.id}
+        r='10'
+        cx={playerSpace.x * meta['width'] + offset.dx}
+        cy={playerSpace.y * meta['height'] + offset.dy}
+        fill={player.pieceColor}
+      />
+    );
+  });
+  return <>{playersArray}</>;
+}
+
+function Board({
+  players,
+  cards,
+}: {
+  players: Player[];
+  cards: Record<string, CardKind>;
+}) {
   return (
     // for loop through board.json end render each object
     <div className='wrapper'>
@@ -110,6 +258,8 @@ function Board() {
         <CreateSeaRoutes />
         <CreateObjects />
         <CreateFlightRoutes />
+        <CreateCards cards={cards} />
+        <CreateButtons players={players} />
       </svg>
     </div>
   );
