@@ -19,27 +19,17 @@ import logging
 import os
 from collections import deque
 
-import numpy as np
-
 from .audio import AudioCapture
 from .config import AudioConfig, SpeakerIdConfig, SttConfig, WakeWordConfig
 from .game_stub import process_command
 from .speaker_id import SpeakerEmbedder, VoiceRoster
 from .stt import CommandTranscriber
 from .tts import KokoroSpeaker
+from .turn_gate import ID_BUFFER_SECONDS, enroll_players, wait_for_activation
 from .ui_server import UiServer
 from .wakeword import CHUNK_SAMPLES, WakeWordDetector
 
-# Enrollment records the wake word itself, repeated, rather than arbitrary free speech --
-# a speaker embedding is somewhat content-dependent, and the only clip identification
-# ever sees at runtime is the wake phrase, so enrolling on mismatched content (a sentence
-# vs. two words) was making matches noisier than they needed to be. Repeating it a few
-# times and averaging the embeddings smooths out per-utterance noise too.
 ENROLL_REPEATS = 3
-# Rolling buffer used as the identification clip on a wake-word hit -- long enough to
-# contain the whole wake phrase (openWakeWord fires partway through/after it's said).
-# Enrollment clips use this same length so they're directly comparable to it.
-ID_BUFFER_SECONDS = 2.0
 # How long to record the actual command after a valid wake word -- "dice roll is 4,
 # moving towards south" fits comfortably; this stands in for the camera noticing a
 # piece has moved, since there's no camera yet.
@@ -59,39 +49,6 @@ def parse_args():
     return p.parse_args()
 
 
-def wait_for_activation(capture, detector, embedder, roster, rolling, players, turn_idx):
-    """Block until the current player says the wake word; returns (name, score).
-
-    Verifies the clip against specifically the EXPECTED player (roster.verify),
-    not an open-set "who does this sound most like" across everyone (roster.identify)
-    -- with two similar-sounding players, identify()'s argmax lets one of them win
-    every time regardless of who actually spoke, since it's a competition between
-    voices rather than a check against the one voice that should be talking.
-
-    Runs its own stream_16k_chunks() loop and returns out of it (rather than the
-    caller looping chunk-by-chunk itself) so the mic stream is fully torn down
-    before record_seconds() below opens a second one -- this hardware doesn't
-    tolerate two simultaneous input streams (see audio.py/test_turn_gate history).
-    """
-    expected = players[turn_idx]
-    for chunk in capture.stream_16k_chunks(CHUNK_SAMPLES):
-        rolling.append(chunk)
-        event = detector.process_chunk(chunk)
-        if event is None:
-            continue
-
-        clip = np.concatenate(list(rolling))
-        verified, score = roster.verify(expected, embedder.embed(clip))
-
-        if not verified:
-            print(f"Wake word heard (score {event.score:.2f}) but didn't match {expected}'s "
-                  f"enrolled voice (similarity {score:.2f}) -- ignoring.")
-            continue
-
-        print(f"Wake word heard from {expected} (match {score:.2f}) -- ACTIVATED.")
-        return expected, score
-
-
 def main():
     args = parse_args()
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
@@ -104,7 +61,6 @@ def main():
     audio_cfg = AudioConfig()
     capture = AudioCapture(audio_cfg)
     embedder = SpeakerEmbedder(SpeakerIdConfig(hf_token=args.hf_token, match_threshold=args.match_threshold))
-    roster = VoiceRoster(threshold=args.match_threshold)
     transcriber = CommandTranscriber(SttConfig())
     speaker = KokoroSpeaker()
 
@@ -112,16 +68,8 @@ def main():
     ui.start()
     print(f"Text box: http://<this-pi's-ip>:{args.ui_port}/")
 
-    spoken_wake_word = args.wake_word.replace("_", " ")
-    for name in players:
-        print(f'\n{name}: enroll by saying "{spoken_wake_word}" {ENROLL_REPEATS} times.')
-        embeddings = []
-        for i in range(ENROLL_REPEATS):
-            input(f'  ({i + 1}/{ENROLL_REPEATS}) Press Enter, then say "{spoken_wake_word}"...')
-            sample = capture.record_seconds(ID_BUFFER_SECONDS)
-            embeddings.append(embedder.embed(sample))
-        roster.enroll(name, np.mean(embeddings, axis=0))
-        print(f"Enrolled {name}.")
+    roster = enroll_players(capture, embedder, players, args.wake_word, ENROLL_REPEATS,
+                             args.match_threshold)
 
     detector = WakeWordDetector(WakeWordConfig(model=args.wake_word, threshold=args.threshold))
     buffer_chunks = max(1, int(ID_BUFFER_SECONDS * audio_cfg.sample_rate / CHUNK_SAMPLES))

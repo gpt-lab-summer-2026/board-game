@@ -32,5 +32,6 @@ class CommandTranscriber:
         # it; without VAD, whisper transcribes that silence as part of the utterance too
         # (prone to hallucinated words), instead of just skipping straight to the speech.
         segments, _info = self._model.transcribe(audio, language=self.cfg.language, beam_size=5,
-                                                   vad_filter=True)
+                                                   vad_filter=True,
+                                                   initial_prompt=self.cfg.initial_prompt)
         return " ".join(seg.text.strip() for seg in segments).strip()

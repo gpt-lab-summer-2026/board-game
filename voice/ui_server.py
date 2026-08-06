@@ -26,6 +26,7 @@ class UiServer:
     def __init__(self, port: int = 8765):
         self._lock = threading.Lock()
         self._message = "Waiting for a player to speak..."
+        self._event: dict | None = None
         handler = _build_handler(self)
         self._httpd = ThreadingHTTPServer(("0.0.0.0", port), handler)
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
@@ -34,13 +35,17 @@ class UiServer:
         self._thread.start()
         log.info("UI server listening on http://0.0.0.0:%d", self._httpd.server_port)
 
-    def set_message(self, text: str) -> None:
+    def set_message(self, text: str, event: dict | None = None) -> None:
+        """event is a generic structured signal (e.g. {"type": "square_landed",
+        "square_type": "large_gem"}) for a future frontend to react to beyond
+        plain text -- this module makes no assumptions about how it's rendered."""
         with self._lock:
             self._message = text
+            self._event = event
 
-    def get_message(self) -> str:
+    def get_status(self) -> dict:
         with self._lock:
-            return self._message
+            return {"message": self._message, "event": self._event}
 
     def stop(self) -> None:
         self._httpd.shutdown()
@@ -53,7 +58,7 @@ def _build_handler(server: UiServer):
 
         def do_GET(self):
             if self.path == "/status":
-                body = json.dumps({"message": server.get_message()}).encode()
+                body = json.dumps(server.get_status()).encode()
                 self._send(200, "application/json", body)
                 return
 
