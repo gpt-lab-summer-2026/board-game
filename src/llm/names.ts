@@ -22,12 +22,13 @@ for (const city of cities) {
 /**
  * The city whose name or id appears verbatim in `transcript`, if exactly one does.
  *
- * This exists because a 4B model loses to lexical similarity on the board's one
- * irregular row: id "Tammelan tori" carries the name "Tampere talo", and the
- * model picks the lexically-closer but wrong "tammela" every time -- even given
- * an explicit worked example and a paragraph explaining the quirk. An exact
- * substring match is strictly stronger evidence than the model's guess, so where
- * one exists it wins.
+ * This exists because a 4B model loses to lexical similarity between board
+ * names. On the previous board it picked "tammela" over the correct answer
+ * every single time -- even given an explicit worked example and a paragraph
+ * spelling out the distinction. The current board has several near-twins
+ * (Tampere talo / Tammelan tori / Tammerkoski, the two Yliopisto campuses), so
+ * the failure mode is still live. An exact substring match is strictly stronger
+ * evidence than the model's guess, so where one exists it wins.
  *
  * Returns null when nothing matches, or when two different cities are mentioned
  * (genuinely ambiguous -- let the model weigh the sentence).

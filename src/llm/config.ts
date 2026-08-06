@@ -5,8 +5,11 @@
 // llama-server. That means a phone or the projector browser needs no knowledge
 // of the Pi's address or the server's port. Override with VITE_LLM_BASE_URL to
 // point at a llama-server on another host.
+// Optional chaining because import.meta.env only exists under Vite -- without it
+// this module throws on import in a plain node runtime, which is where the
+// out-of-browser checks run.
 export const LLM_BASE_URL: string =
-  import.meta.env.VITE_LLM_BASE_URL ?? '/llm';
+  import.meta.env?.VITE_LLM_BASE_URL ?? '/llm';
 
 export const LLM_SAMPLING = {
   // Low, not zero: the grammar already restricts output to valid tokens, so

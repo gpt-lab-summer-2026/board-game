@@ -1,7 +1,7 @@
 import { spaces } from '../game/boardDataRestructure';
 import type { EdgeKind } from '../game/boardDataRestructure';
 
-/** The 32 city spaces, in board.json order. */
+/** The 32 city spaces, in board order (see boardDataRestructure). */
 export const cities = spaces.filter(
   space => space.kind === 'city',
 );
@@ -11,13 +11,9 @@ export const cityIds: readonly string[] = cities.map(
 );
 
 // `id` is what findMoves/spaceById key on; `name` is what a player actually
-// says. All 32 differ (diacritics folded, spaces hyphenated: hakametsa /
-// Hakametsä), so the model needs both columns to map speech onto an id.
-//
-// One row is genuinely odd rather than merely slugged: id 'Tammelan tori'
-// carries name 'Tampere talo' -- an unrelated place, and a separate city
-// 'tammela' / 'Tammela' also exists. It's a HOME_CITY_ID, so it's listed
-// verbatim rather than "corrected" here.
+// says. They differ by slugging -- diacritics folded and spaces hyphenated,
+// hakametsa / Hakametsä -- so the model needs both columns to map speech to an
+// id. Generated from the board data, so a regenerated board updates it for free.
 const cityTable = cities
   .map(city => `${city.id} = ${city.name}`)
   .join('\n');
@@ -54,21 +50,17 @@ Set action to "move" and fill in heading and mode. If they named no place, or \
 named something that isn't in the list, or the words aren't a move at all, set \
 action to "unclear" and give the matching unclear_reason instead of guessing.
 
-Match the place the player actually said, letter by letter. Several names start \
-alike or share a word -- Turtola and Tammelan tori and Tammela are three \
-different places, and so are Hervannan vesitorni and Yliopisto - Hervannan \
-kampus. Pick the one whose name matches what they said, not merely a name that \
-begins the same way.
-
-One row of the table is genuinely irregular rather than just spelled \
-differently: the id "Tammelan tori" carries the name "Tampere talo". A player \
-saying "Tampere talo" means that row -- not the separate city "tammela" \
-("Tammela"), which is a different place.
+Match the place the player actually said, letter by letter. Several names begin \
+alike or share a word but are different places: Tampere talo, Tammelan tori and \
+Tammerkoski; Hervannan vesitorni and Yliopisto - Hervannan kampus; Yliopisto - \
+keskusta kampus and Yliopisto - Hervannan kampus; Kalevan prisma and Kalevan \
+kirkko. Pick the one that matches what they said, not merely one that starts \
+the same way.
 
 Examples:
 "fly toward Turtola" -> {"action":"move","heading":"turtola","mode":"flight"}
-"heading for Tammela" -> {"action":"move","heading":"tammela","mode":"not_stated"}
-"go to Tampere talo" -> {"action":"move","heading":"Tammelan tori","mode":"not_stated"}
+"go to Tampere talo" -> {"action":"move","heading":"tampere-talo","mode":"not_stated"}
+"heading for Tammelan tori" -> {"action":"move","heading":"tammelan-tori","mode":"not_stated"}
 "sail to the Hervanta campus" -> {"action":"move","heading":"yliopisto-hervannan-kampus","mode":"sea"}
 "toward the water tower in Hervanta" -> {"action":"move","heading":"hervannan-vesitorni","mode":"not_stated"}
 "heading for Nairobi" -> {"action":"unclear","heading":"","mode":"not_stated","unclear_reason":"no_heading"}

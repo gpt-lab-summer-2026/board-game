@@ -23,13 +23,17 @@ function check(label: string, got: unknown, want: unknown) {
 console.log(`board: ${cityIds.length} cities`);
 
 // --- matchCityName: the deterministic override -------------------------------
-check('exact name "go to Tampere talo"', matchCityName('go to Tampere talo'), 'Tammelan tori');
-check('exact name "heading for Tammela"', matchCityName('heading for Tammela'), 'tammela');
+// the near-twins the model confuses: these must resolve exactly
+check('near-twin "Tampere talo"', matchCityName('go to Tampere talo'), 'tampere-talo');
+check('near-twin "Tammelan tori"', matchCityName('heading for Tammelan tori'), 'tammelan-tori');
+check('near-twin "Tammerkoski"', matchCityName('toward Tammerkoski'), 'tammerkoski');
+check('near-twin Hervanta campus', matchCityName('to the Yliopisto - Hervannan kampus'), 'yliopisto-hervannan-kampus');
+check('near-twin Hervanta water tower', matchCityName('to Hervannan vesitorni'), 'hervannan-vesitorni');
 check('diacritic-insensitive "Hakametsa"', matchCityName('toward Hakametsa'), 'hakametsa');
 check('diacritics present "Hakametsä"', matchCityName('toward Hakametsä'), 'hakametsa');
 check('id spelling accepted', matchCityName('go to yliopisto-hervannan-kampus'), 'yliopisto-hervannan-kampus');
 check('no city mentioned', matchCityName('the weather is nice'), null);
-check('two cities = ambiguous', matchCityName('from Tammela to Turtola'), null);
+check('two cities = ambiguous', matchCityName('from Ratina to Turtola'), null);
 
 // --- deriveMove: shared steps/cost rules -------------------------------------
 check('land uses the roll, free', deriveMove('land', 300, 4), { ok: true, steps: 4, cost: 0 });
@@ -40,22 +44,59 @@ check('sea with money uses roll for 100', deriveMove('sea', 100, 3), { ok: true,
 check('sea when broke sails 2 free', deriveMove('sea', 99, null), { ok: true, steps: 2, cost: 0 });
 
 // --- heading chooser ---------------------------------------------------------
-const d = distancesFrom('hakametsa', ['land']);
-check('distance to self is 0', d.get('hakametsa'), 0);
-check('viikinsaari unreachable by land', d.get('viikinsaari'), undefined);
+// Asserted as properties rather than against specific square ids: the board gets
+// regenerated (board.json -> board2.json already happened once), and hardcoded
+// waypoint names would fail for reasons that have nothing to do with this logic.
+check('distance to self is 0', distancesFrom('hakametsa', ['land']).get('hakametsa'), 0);
 
 function pick(from: string, steps: number, kind: 'land' | 'sea', heading: string) {
   const cands = [...findMoves(from, steps, [kind]).keys()];
   const chosen = chooseDestination(cands, heading, [kind]);
   const dist = distancesFrom(heading, [kind]);
-  return { chosen, before: dist.get(from), after: chosen ? dist.get(chosen) : null };
+  return { chosen, after: chosen === null ? null : dist.get(chosen) };
 }
-// progress must scale with the roll, and land exactly on a reachable named city
-check('roll 1 toward hakametsa', pick('keskustori', 1, 'land', 'hakametsa'), { chosen: 's84', before: 17, after: 16 });
-check('roll 3 toward hakametsa', pick('keskustori', 3, 'land', 'hakametsa'), { chosen: 's82', before: 17, after: 14 });
-check('roll 3 toward laukontori lands on it', pick('keskustori', 3, 'land', 'laukontori'), { chosen: 'laukontori', before: 2, after: 0 });
-check('roll 6 toward finlayson lands on it', pick('keskustori', 6, 'land', 'finlayson'), { chosen: 'finlayson', before: 5, after: 0 });
-check('island unreachable on foot', pick('keskustori', 1, 'land', 'viikinsaari'), { chosen: null, before: undefined, after: null });
+
+// 1. A bigger roll must never leave you further from where you're heading.
+let regressions = 0;
+for (const from of cityIds) {
+  for (const heading of cityIds) {
+    if (from === heading) continue;
+    let prev = Number.POSITIVE_INFINITY;
+    for (const steps of [1, 2, 3, 4, 5, 6]) {
+      const { after } = pick(from, steps, 'land', heading);
+      if (after === null || after === undefined) continue;
+      if (after > prev) regressions++;
+      prev = after;
+    }
+  }
+}
+check('a bigger roll never ends further away (all city pairs)', regressions, 0);
+
+// 2. Naming a city you can actually reach this turn must land on it exactly.
+let missedExact = 0;
+let exactCases = 0;
+for (const from of cityIds) {
+  for (const steps of [1, 2, 3, 4, 5, 6]) {
+    const cands = [...findMoves(from, steps, ['land']).keys()];
+    for (const target of cands.filter(id => spaceById[id]?.kind === 'city')) {
+      exactCases++;
+      if (chooseDestination(cands, target, ['land']) !== target) missedExact++;
+    }
+  }
+}
+check(`reachable named city is landed on exactly (${exactCases} cases)`, missedExact, 0);
+
+// 3. A heading with no route by that mode yields no move, rather than a wrong one.
+const strandedByLand = cityIds.filter(
+  id => distancesFrom(id, ['land']).size === 1,
+);
+check(
+  `heading somewhere unreachable by that mode returns null (${strandedByLand.length} land-isolated cities)`,
+  strandedByLand.every(
+    id => pick('keskustori', 3, 'land', id).chosen === null,
+  ),
+  true,
+);
 
 // every chosen square must actually be a legal landing square
 let illegal = 0;
