@@ -1,0 +1,19 @@
+html, body {
+  height: 100%;
+  margin: 0;
+  background: #111;
+  color: #f5f5f5;
+  font-family: system-ui, sans-serif;
+}
+
+#message-box {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+  box-sizing: border-box;
+  font-size: 3rem;
+  line-height: 1.4;
+}

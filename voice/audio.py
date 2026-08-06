@@ -1,5 +1,15 @@
 """Microphone capture for the diarization test harness.
 
+Goes through PipeWire's own `pw-record` CLI rather than sounddevice/
+PortAudio: on this Pi, PortAudio's ALSA backend has repeatedly failed against
+the same USB mic in different ways across this project's history --
+"Invalid number of channels", "Invalid sample rate", devices silently
+vanishing from its enumeration, "Error queueing device" -- while `pw-record`
+negotiates through PipeWire correctly every time the underlying hardware node
+itself is healthy. (A wedged PipeWire node -- visible via `pw-top` showing
+state 'E' on the mic's node -- is a separate, hardware/driver-level failure
+that needs a physical USB replug; no software fix here addresses that.)
+
 Records at the mic's native rate (48 kHz -- requesting 16 kHz straight from
 ALSA is unreliable on hardware that doesn't support it natively) and resamples
 down to 16 kHz mono float32 in software, which is what both faster-whisper and
@@ -8,6 +18,10 @@ pyannote expect.
 from __future__ import annotations
 
 import logging
+import signal
+import subprocess
+import tempfile
+import wave
 from math import gcd
 
 import numpy as np
@@ -22,46 +36,49 @@ class AudioCapture:
         self.cfg = cfg
 
     def record_seconds(self, seconds: float) -> np.ndarray:
-        import sounddevice as sd  # lazy: only needed when actually recording
-
-        log.info("Recording %.1fs at %d Hz from device %s...",
-                  seconds, self.cfg.capture_rate, self.cfg.device or "default")
-        frames = int(seconds * self.cfg.capture_rate)
-        audio = sd.rec(frames, samplerate=self.cfg.capture_rate, channels=self.cfg.channels,
-                        dtype="float32", device=self.cfg.device)
-        sd.wait()
-        audio = audio.reshape(-1)
+        log.info("Recording %.1fs at %d Hz...", seconds, self.cfg.capture_rate)
+        with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+            proc = subprocess.Popen(
+                ["pw-record", "--rate", str(self.cfg.capture_rate),
+                 "--channels", str(self.cfg.channels), f.name],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            try:
+                proc.wait(timeout=seconds)  # pw-record never exits on its own, so this always
+            except subprocess.TimeoutExpired:  # times out -- that's the normal path, not an error
+                # pw-record only flushes a valid WAV header/footer on SIGINT, not SIGTERM/kill.
+                proc.send_signal(signal.SIGINT)
+                proc.wait(timeout=5)
+            with wave.open(f.name, "rb") as wav:
+                raw = wav.readframes(wav.getnframes())
+        audio = np.frombuffer(raw, dtype="int16").astype("float32") / 32768.0
         return resample(audio, self.cfg.capture_rate, self.cfg.sample_rate)
 
     def stream_16k_chunks(self, chunk_samples: int = 1280):
         """Continuously yield int16 mono 16kHz chunks of `chunk_samples` for as long
         as the caller keeps iterating -- for wake-word listening, which needs a live
         stream rather than record_seconds()'s fixed-length blocking capture. Tearing
-        down the loop (break / generator close) stops and closes the mic stream.
+        down the loop (break / generator close) stops the pw-record process.
         """
-        import queue
-
-        import sounddevice as sd
-
         native_chunk = chunk_samples * self.cfg.capture_rate // self.cfg.sample_rate
-        q: queue.Queue = queue.Queue()
-
-        def callback(indata, frames, time_info, status):
-            if status:
-                log.debug("sounddevice status: %s", status)
-            q.put(indata[:, 0].copy())
-
-        stream = sd.InputStream(samplerate=self.cfg.capture_rate, channels=self.cfg.channels,
-                                 dtype="float32", device=self.cfg.device, blocksize=native_chunk,
-                                 callback=callback)
-        stream.start()
+        bytes_per_chunk = native_chunk * 2  # s16 = 2 bytes/sample, mono
+        proc = subprocess.Popen(
+            ["pw-record", "--rate", str(self.cfg.capture_rate), "--channels", str(self.cfg.channels),
+             "--format", "s16", "-a", "-"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
         try:
             while True:
-                block = resample(q.get(), self.cfg.capture_rate, self.cfg.sample_rate)
-                yield (np.clip(block, -1.0, 1.0) * 32767).astype("int16")
+                raw = proc.stdout.read(bytes_per_chunk)
+                if len(raw) < bytes_per_chunk:
+                    log.warning("pw-record stream ended unexpectedly")
+                    break
+                native = np.frombuffer(raw, dtype="int16").astype("float32") / 32768.0
+                chunk = resample(native, self.cfg.capture_rate, self.cfg.sample_rate)
+                yield (np.clip(chunk, -1.0, 1.0) * 32767).astype("int16")
         finally:
-            stream.stop()
-            stream.close()
+            proc.terminate()
+            proc.wait(timeout=5)
 
 
 def resample(samples: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
@@ -77,8 +94,6 @@ def resample(samples: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
 
 def save_wav(path: str, samples: np.ndarray, sample_rate: int) -> None:
     """Write float32 [-1, 1] mono samples as 16-bit PCM, stdlib-only (no soundfile dependency)."""
-    import wave
-
     pcm16 = (np.clip(samples, -1.0, 1.0) * 32767).astype("int16")
     with wave.open(path, "wb") as f:
         f.setnchannels(1)
