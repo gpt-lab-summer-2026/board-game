@@ -23,10 +23,27 @@ type UseVoiceControlArgs = {
   currentPlayer: VoiceControlPlayer | undefined;
   llmPending: boolean;
   hasPendingCard: boolean;
+  /** Mirrors the JSX's own pendingMove-panel condition (remainingSteps > 0) --
+   * see App.tsx's "Continue moving" / "Stop here" buttons. */
+  hasPendingMove: boolean;
   lastRoll: number | null;
   moveMode: EdgeKind;
   /** Resolves a move, exactly like typing into the "type a move" box + clicking Ask. */
   askClick: (transcript: string) => void;
+  /** "Continue" during an enslaved turn. */
+  onContinueSlaveTurn: () => void;
+  /** Pay/wait/skip an unclaimed card, exactly like the three buttons do. */
+  onResolveCard: (action: 'pay' | 'wait' | 'skip') => void;
+  /** "Continue moving" after declining a card passed en route. */
+  onContinueMove: () => void;
+  /** "Stop here" after declining a card passed en route. */
+  onStopMove: () => void;
+  /** Called with a hint message when a voice command was heard clearly enough
+   * to route (right player, right turn) but didn't match anything the current
+   * state accepts -- e.g. "say roll to escape" during a capture. Without this,
+   * an unrecognized command in these narrow-menu states just silently did
+   * nothing, which looks identical to the mic not having heard anything at all. */
+  onUnrecognizedVoiceCommand: (hint: string) => void;
   gameStatsRef: RefObject<GameStatsHandle | null>;
   rollDiceRef: RefObject<RollDice | null>;
 };
@@ -59,9 +76,15 @@ export function useVoiceControl({
   currentPlayer,
   llmPending,
   hasPendingCard,
+  hasPendingMove,
   lastRoll,
   moveMode,
   askClick,
+  onContinueSlaveTurn,
+  onResolveCard,
+  onContinueMove,
+  onStopMove,
+  onUnrecognizedVoiceCommand,
   gameStatsRef,
   rollDiceRef,
 }: UseVoiceControlArgs): VoiceControlStatus {
@@ -105,18 +128,39 @@ export function useVoiceControl({
 
     // Captured (escape roll) and waiting-for-card (claim roll) turns only ever
     // take a roll -- there's no move/ask input in either state -- so a "roll"
-    // utterance is the only thing worth routing, and anything else is a no-op.
+    // utterance is the only thing worth routing.
     if (
       currentPlayer.status?.type === 'captured' ||
       currentPlayer.status?.type === 'waitingForCard'
     ) {
       if (isRollCommand) rollDiceRef.current?.roll();
+      else onUnrecognizedVoiceCommand('Didn\'t catch that -- say "roll" to roll the dice.');
       return;
     }
 
-    // Enslaved turns (just a "Continue" button) and a pending unclaimed card
-    // (pay/wait/skip buttons) don't take free-form input at all, voice or typed.
-    if (currentPlayer.status || hasPendingCard) return;
+    // Enslaved turn: only "continue" (the turn's only button) does anything.
+    if (currentPlayer.status?.type === 'slave') {
+      if (/\bcontinue\b/i.test(msg.text)) onContinueSlaveTurn();
+      else onUnrecognizedVoiceCommand('Didn\'t catch that -- say "continue".');
+      return;
+    }
+
+    // A pending unclaimed card: pay/wait/skip, mirroring the three buttons.
+    if (hasPendingCard) {
+      if (/\b(buy|pay)\b/i.test(msg.text)) onResolveCard('pay');
+      else if (/\bwait\b/i.test(msg.text)) onResolveCard('wait');
+      else if (/\b(skip|leave|decline)\b/i.test(msg.text)) onResolveCard('skip');
+      else onUnrecognizedVoiceCommand('Didn\'t catch that -- say "pay", "wait", or "skip".');
+      return;
+    }
+
+    // Declined a card passed en route: only "continue"/"stop" do anything here.
+    if (hasPendingMove) {
+      if (/\bcontinue\b/i.test(msg.text)) onContinueMove();
+      else if (/\bstop\b/i.test(msg.text)) onStopMove();
+      else onUnrecognizedVoiceCommand('Didn\'t catch that -- say "continue" or "stop".');
+      return;
+    }
 
     const canRollNow =
       lastRoll === null &&
@@ -127,6 +171,10 @@ export function useVoiceControl({
       return;
     }
 
+    // Anything else is a move attempt -- resolveMoveIntent (the LLM) decides
+    // whether it actually understood it, and its own "unclear" result already
+    // surfaces a message (see askClick/setLlmMessage in App.tsx), so there's
+    // no separate "didn't understand" case to add here.
     askClick(msg.text);
   };
   // Re-assigned every render so the websocket callback (wired up once, below)

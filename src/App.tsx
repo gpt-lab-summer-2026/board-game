@@ -367,6 +367,12 @@ function App() {
     applyArrival(path[stopIndex], cost);
   };
 
+  /** Give up the rest of the roll after declining a card en route. */
+  const stopMove = () => {
+    setPendingMove(null);
+    advanceTurn();
+  };
+
   /** Spend what's left of the roll after declining a card en route. */
   const continueMove = () => {
     if (!pendingMove) return;
@@ -438,22 +444,6 @@ function App() {
       llmAbort.current = null;
     }
   };
-
-  // Everything voice-related lives in this one hook -- see its own doc comment
-  // for what it does; App just hands it the state/refs it needs to act, and
-  // renders the {connected, voiceStatus} it hands back (see VoiceIndicator).
-  const voice = useVoiceControl({
-    gameState,
-    setGameState,
-    currentPlayer,
-    llmPending,
-    hasPendingCard: pendingCard !== null,
-    lastRoll,
-    moveMode,
-    askClick,
-    gameStatsRef,
-    rollDiceRef,
-  });
 
   const resolveCard = (action: 'pay' | 'wait' | 'skip') => {
     if (!pendingCard) return;
@@ -567,6 +557,28 @@ function App() {
     );
     if (!freed) advanceTurn();
   };
+
+  // Everything voice-related lives in this one hook -- see its own doc comment
+  // for what it does; App just hands it the state/refs it needs to act, and
+  // renders the {connected, voiceStatus} it hands back (see VoiceIndicator).
+  const voice = useVoiceControl({
+    gameState,
+    setGameState,
+    currentPlayer,
+    llmPending,
+    hasPendingCard: pendingCard !== null,
+    hasPendingMove: pendingMove !== null && pendingMove.remainingSteps > 0,
+    lastRoll,
+    moveMode,
+    askClick,
+    onContinueSlaveTurn: continueSlaveTurn,
+    onResolveCard: resolveCard,
+    onContinueMove: continueMove,
+    onStopMove: stopMove,
+    onUnrecognizedVoiceCommand: setInfoMessage,
+    gameStatsRef,
+    rollDiceRef,
+  });
 
   const change = (event: ChangeEvent<HTMLInputElement>) => {
     setText(event.target.value);
@@ -731,12 +743,7 @@ function App() {
                     <button onClick={continueMove}>
                       Continue moving
                     </button>
-                    <button
-                      onClick={() => {
-                        setPendingMove(null);
-                        advanceTurn();
-                      }}
-                    >
+                    <button onClick={stopMove}>
                       Stop here
                     </button>
                   </div>
