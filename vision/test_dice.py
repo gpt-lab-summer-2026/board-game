@@ -1,12 +1,22 @@
-"""Live dice reader: point the camera at a phone showing a die face.
+"""Live dice reader: reads the die the game draws on the projected board.
 
-    python -m vision.test_dice                    # window + saved frames
-    python -m vision.test_dice --no-window        # headless, frames only
-    python -m vision.test_dice --whole-frame      # skip YOLO, read the full view
+    python -m vision.test_dice                       # window + saved frames
+    python -m vision.test_dice --no-window           # headless, frames only
+    python -m vision.test_dice --corner bottom-right # die drawn elsewhere
+    python -m vision.test_dice --roi 0.6,0.05,0.98,0.4   # tighter than a quadrant
+    python -m vision.test_dice --debug-roi           # dump the crop to inspect
 
-YOLO locates the phone (COCO's `cell phone` class) so the pip counter only ever
-looks at the screen, not at a whiteboard full of round clutter. The value is
-only announced once it has held still for a few frames -- see StableReading.
+The die is rendered by the game itself, so its location is known: find the
+projected rectangle in the camera frame, take the named quadrant of it, and read
+the die there. No YOLO -- it has no dice class and cannot read a value, and now
+that the die sits at a known spot on the projection there is nothing left for an
+object detector to find. Locating the projection by brightness costs ~10ms
+against YOLO's ~200ms.
+
+Resolution matters more than anything else here: the projected die is 24x21px at
+720p, where its pips are ~2px and unreadable, and 65x58px at 2592x1944, where
+they are not. Hence the default. --physical switches to the reader for a real
+die (dark pips on a light face) instead.
 
 Keys in the window: q or Esc quits, s saves the current frame immediately.
 """
@@ -20,20 +30,18 @@ from pathlib import Path
 import cv2
 
 from .camera import Camera, CameraConfig
-from .dice import StableReading, annotate as annotate_pips, read_dice
+from .dice import (
+    StableReading,
+    annotate as annotate_pips,
+    find_die,
+    read_dice,
+    read_projected_die,
+)
+from .projection import ProjectionTracker, annotate as annotate_projection
 
 log = logging.getLogger(__name__)
 
-# COCO has no die, but it does have the thing holding it. Ordered by preference:
-# a real `cell phone` always wins, `remote` is only here because a phone held
-# edge-on is regularly mistaken for one.
-#
-# `tv`/`laptop` are deliberately absent. In this room they match the projected
-# board -- a big bright rectangle covered in round route markers, which is
-# exactly what a pip counter will happily miscount as a die. Observed: with
-# `tv` enabled the reader announced a 2 off the projection with no phone in
-# frame. Pass --extra-labels to opt them back in.
-PHONE_LABELS: tuple[str, ...] = ("cell phone", "remote")
+CORNERS = ("top-right", "top-left", "bottom-right", "bottom-left")
 
 
 def parse_args():
@@ -42,29 +50,26 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--device", type=int, default=0)
-    p.add_argument("--width", type=int, default=1280)
-    p.add_argument("--height", type=int, default=720)
+    # Measured against the projected die: at 1280x720 it lands 24x21px, whose
+    # pips are ~2px of pale blue on white and are not reliably countable. At
+    # 2592x1944 the same die is 65x58px and reads cleanly. 3840x2160 gains
+    # almost nothing beyond that (72x64) for twice the pixels.
+    p.add_argument("--width", type=int, default=2592)
+    p.add_argument("--height", type=int, default=1944)
+    p.add_argument(
+        "--corner", choices=CORNERS, default="top-right",
+        help="which quarter of the projection holds the die",
+    )
+    p.add_argument(
+        "--roi",
+        default=None,
+        help="x1,y1,x2,y2 as fractions of the projection (overrides --corner) "
+        "-- use when a whole quadrant picks up too much other UI",
+    )
     p.add_argument(
         "--whole-frame",
         action="store_true",
-        help="don't use YOLO; look for pips across the entire frame",
-    )
-    p.add_argument(
-        "--yolo-every",
-        type=int,
-        default=3,
-        help="run YOLO every Nth frame and reuse its box in between "
-        "(YOLO is ~200ms, pip counting is ~2ms)",
-    )
-    p.add_argument(
-        "--confidence", type=float, default=0.25,
-        help="YOLO confidence floor for the phone",
-    )
-    p.add_argument(
-        "--extra-labels",
-        default="",
-        help="comma-separated extra COCO labels to accept as the phone "
-        "(e.g. tv,laptop) -- risky near a projected board, see PHONE_LABELS",
+        help="skip projection detection and read the entire camera frame",
     )
     p.add_argument(
         "--stable-frames", type=int, default=4,
@@ -72,16 +77,34 @@ def parse_args():
     )
     p.add_argument("--no-window", action="store_true", help="headless")
     p.add_argument(
-        "--save-dir",
-        default="/tmp/dice_frames",
+        "--save-dir", default="/tmp/dice_frames",
         help="annotated frames are written here",
     )
     p.add_argument(
         "--save-every", type=int, default=15,
         help="save every Nth frame (0 disables periodic saving)",
     )
+    p.add_argument(
+        "--debug-roi", action="store_true",
+        help="also save the raw crop the pip counter sees, for tuning",
+    )
+    p.add_argument(
+        "--physical", action="store_true",
+        help="read a real die (dark pips on a light face) instead of the one "
+        "the game projects",
+    )
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args()
+
+
+def parse_roi(text: str) -> tuple[float, float, float, float]:
+    parts = [float(v) for v in text.split(",")]
+    if len(parts) != 4:
+        raise SystemExit("--roi needs four comma-separated fractions")
+    x1, y1, x2, y2 = parts
+    if not (0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1):
+        raise SystemExit("--roi fractions must satisfy 0 <= x1 < x2 <= 1 (same for y)")
+    return x1, y1, x2, y2
 
 
 def main():
@@ -93,37 +116,29 @@ def main():
 
     save_dir = Path(args.save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
+    roi = parse_roi(args.roi) if args.roi else None
 
-    labels = PHONE_LABELS + tuple(
-        label.strip()
-        for label in args.extra_labels.split(",")
-        if label.strip()
-    )
-
-    detector = None
-    if not args.whole_frame:
-        from .objects import ObjectDetector
-
-        detector = ObjectDetector(confidence=args.confidence)
-        print(f"Looking for: {', '.join(labels)}")
-
+    tracker = ProjectionTracker()
     stable = StableReading(required=args.stable_frames)
-    phone_box: tuple[int, int, int, int] | None = None
     frame_no = 0
     saved = 0
     read_failures = 0
     last_announced: int | None = None
+    missing_projection = 0
 
+    where = (
+        "whole frame" if args.whole_frame
+        else f"{args.corner} of the projection" if roi is None
+        else f"ROI {roi} of the projection"
+    )
     print(
-        "Reading dice. "
+        f"Reading dice from the {where}. "
         + ("Window: q/Esc quit, s save. " if not args.no_window else "")
         + f"Frames -> {save_dir}"
     )
 
     with Camera(
-        CameraConfig(
-            device=args.device, width=args.width, height=args.height
-        )
+        CameraConfig(device=args.device, width=args.width, height=args.height)
     ) as cam:
         try:
             while True:
@@ -150,93 +165,101 @@ def main():
                 frame_no += 1
                 height, width = frame.shape[:2]
 
-                # Locate the phone. YOLO is the slow part, so it runs
-                # periodically and its box is reused on the frames between.
-                if detector is not None and frame_no % args.yolo_every == 1:
-                    candidates = [
-                        d
-                        for d in detector.detect(frame)
-                        if d.label in labels
-                    ]
-                    # Rank by label preference first, confidence only to break
-                    # ties within a label -- so a 40%-sure phone still beats a
-                    # 90%-sure monitor.
-                    best = min(
-                        candidates,
-                        key=lambda d: (
-                            labels.index(d.label),
-                            -d.confidence,
-                        ),
-                        default=None,
-                    )
-                    if best is not None:
-                        x1, y1, x2, y2 = (int(v) for v in best.box)
-                        # A little margin: YOLO's box can clip the screen edge,
-                        # and a clipped pip is a miscount.
-                        pad = 8
-                        phone_box = (
-                            max(x1 - pad, 0),
-                            max(y1 - pad, 0),
-                            min(x2 + pad, width),
-                            min(y2 + pad, height),
-                        )
-                    else:
-                        phone_box = None
-
-                if args.whole_frame:
-                    region = frame
-                    origin = (0, 0)
-                elif phone_box is not None:
-                    x1, y1, x2, y2 = phone_box
-                    region = frame[y1:y2, x1:x2]
-                    origin = (x1, y1)
-                else:
-                    region = None
-                    origin = (0, 0)
-
                 started = time.monotonic()
-                reading = read_dice(region) if region is not None and region.size else None
+                projection = None
+                if args.whole_frame:
+                    box = (0, 0, width, height)
+                else:
+                    projection = tracker.update(frame)
+                    if projection is None:
+                        missing_projection += 1
+                        if missing_projection in (1, 30):
+                            print(
+                                "  -- can't see the projection "
+                                "(too dim, or out of frame?)"
+                            )
+                        box = None
+                    else:
+                        missing_projection = 0
+                        if roi is None:
+                            box = projection.quadrant(args.corner)
+                        else:
+                            fx1, fy1, fx2, fy2 = roi
+                            box = (
+                                projection.x1 + int(projection.width * fx1),
+                                projection.y1 + int(projection.height * fy1),
+                                projection.x1 + int(projection.width * fx2),
+                                projection.y1 + int(projection.height * fy2),
+                            )
+
+                reading = None
+                if box is not None:
+                    x1, y1, x2, y2 = box
+                    region = frame[y1:y2, x1:x2]
+                    if region.size:
+                        reading = (
+                            read_dice(region) if args.physical
+                            else read_projected_die(region)
+                        )
+                        if args.debug_roi and frame_no % 30 == 0:
+                            cv2.imwrite(
+                                str(save_dir / f"roi_{frame_no:05d}.jpg"), region
+                            )
+                            box_in_roi = find_die(region)
+                            if box_in_roi is not None:
+                                dx, dy, dw, dh = box_in_roi
+                                cv2.imwrite(
+                                    str(save_dir / f"die_{frame_no:05d}.jpg"),
+                                    region[dy : dy + dh, dx : dx + dw],
+                                )
                 took = (time.monotonic() - started) * 1000
                 value = stable.update(reading.value if reading else None)
 
                 if value != last_announced:
-                    if value is None:
-                        print("  -- no die in view")
-                    else:
-                        print(f"  dice roll: {value}")
+                    print(
+                        "  -- no die in view" if value is None
+                        else f"  dice roll: {value}"
+                    )
                     last_announced = value
 
                 # ---- draw ----
                 shown = frame.copy()
-                if phone_box is not None:
-                    x1, y1, x2, y2 = phone_box
-                    cv2.rectangle(shown, (x1, y1), (x2, y2), (255, 128, 0), 2)
-                    cv2.putText(
-                        shown, "phone", (x1, max(y1 - 8, 12)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 128, 0), 2,
-                    )
-                annotate_pips(shown, reading, origin)
+                annotate_projection(
+                    shown, projection, None if roi else args.corner
+                )
+                if box is not None:
+                    x1, y1, x2, y2 = box
+                    if roi is not None:
+                        cv2.rectangle(shown, (x1, y1), (x2, y2), (255, 0, 255), 2)
+                    if not args.physical:
+                        die_box = find_die(frame[y1:y2, x1:x2])
+                        if die_box is not None:
+                            dx, dy, dw, dh = die_box
+                            cv2.rectangle(
+                                shown, (x1 + dx, y1 + dy),
+                                (x1 + dx + dw, y1 + dy + dh),
+                                (0, 255, 255), 2,
+                            )
+                    annotate_pips(shown, reading, (x1, y1))
 
                 label = (
                     f"DICE: {value}" if value is not None
                     else (f"reading… ({reading.value})" if reading else "no die")
                 )
                 cv2.putText(
-                    shown, label, (16, 48),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1.4,
+                    shown, label, (16, 48), cv2.FONT_HERSHEY_SIMPLEX, 1.4,
                     (0, 255, 0) if value is not None else (0, 165, 255), 3,
                 )
                 cv2.putText(
-                    shown,
-                    f"{took:.0f}ms pips | frame {frame_no}"
-                    + ("" if detector else " | whole-frame"),
-                    (16, height - 16),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (220, 220, 220), 1,
+                    shown, f"{took:.0f}ms | frame {frame_no}",
+                    (16, height - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (220, 220, 220), 1,
                 )
 
                 if args.save_every and frame_no % args.save_every == 0:
-                    out = save_dir / f"frame_{frame_no:05d}.jpg"
-                    cv2.imwrite(str(out), shown)
+                    cv2.imwrite(
+                        str(save_dir / f"frame_{frame_no:05d}.jpg"), shown
+                    )
                     saved += 1
 
                 if not args.no_window:
