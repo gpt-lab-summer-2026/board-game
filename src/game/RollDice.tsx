@@ -1,11 +1,13 @@
 // RollDice.js File
-import React, { Component } from 'react';
+import { Component } from 'react';
 import './RollDice.css';
 import Die from './Die';
 
 interface RollDiceProps {
   sides?: number[];
   onRoll?: (value: number) => void;
+  /** Blocks rolling entirely -- e.g. once this turn's roll is already spent. */
+  disabled?: boolean;
 }
 
 interface RollDiceState {
@@ -37,7 +39,9 @@ class RollDice extends Component<
     const {
       sides = RollDice.defaultProps.sides ?? [],
       onRoll,
+      disabled,
     } = this.props;
+    if (disabled || this.state.rolling) return;
     this.setState({ rolling: true });
 
     setTimeout(() => {
@@ -64,7 +68,7 @@ class RollDice extends Component<
         </div>
         <button
           className={handleBtn}
-          disabled={this.state.rolling}
+          disabled={this.state.rolling || this.props.disabled}
           onClick={this.roll}
         >
           {this.state.rolling ? 'Rolling' : 'Roll Dice!'}

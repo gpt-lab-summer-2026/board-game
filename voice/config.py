@@ -39,26 +39,7 @@ class SttConfig:
     compute_type: str = "int8"      # int8 keeps this usable on a Pi's CPU
     language: str = "en"
     # Vocabulary bias for whisper -- e.g. the board's Finnish place names, which an
-    # English-only model wouldn't otherwise favor. Mitigation, not a fix: won't always
-    # land on an unfamiliar name exactly; BoardGraph.closest_match() is the backstop.
+    # English-only model wouldn't otherwise favor. A mitigation, not a fix: it won't
+    # always land on an unfamiliar name exactly. Exact resolution now happens on the
+    # React side (src/llm/names.ts) against the real board.
     initial_prompt: str | None = None
-
-
-@dataclass
-class LlmConfig:
-    server_binary: str = "llama.cpp/build/bin/llama-server"
-    model_path: str = "models/gemma-3-4b-it-q4_k_m.gguf"
-    host: str = "127.0.0.1"
-    port: int = 8091                  # distinct from llama-server's own default (8080) and ui_server's (8765)
-    ctx_size: int = 4096
-    threads: int = 4
-    startup_timeout_s: float = 120.0  # first load of a 2.3GB q4 gguf off SD/eMMC can be slow
-    # Measured on this Pi: ~25-31s per call even on a cache hit (prompt caching barely
-    # helps in practice here -- see voice/llm.py's IntentParser docstring). 30s was the
-    # original estimate-based default and turned out to be too tight, causing spurious
-    # "llm_request_failed" clarification loops on legitimately-slow-but-successful calls.
-    request_timeout_s: float = 60.0
-    max_tokens: int = 96              # generation ceiling for the structured JSON reply
-    temperature: float = 0.15         # low: grammar already constrains the space, want the best pick not variety
-    top_p: float = 0.9
-    max_clarification_rounds: int = 2

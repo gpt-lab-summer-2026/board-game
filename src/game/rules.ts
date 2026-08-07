@@ -1,3 +1,5 @@
+import type { EdgeKind } from './boardDataRestructure';
+
 export type CardKind =
   | 'blank'
   | 'horseshoe'
@@ -6,6 +8,51 @@ export type CardKind =
   | 'emerald'
   | 'ruby'
   | 'star';
+
+export type MoveCost =
+  | { ok: true; steps: number; cost: number }
+  | { ok: false; error: string };
+
+/**
+ * How far a player may travel this turn and what it costs them.
+ *
+ * Extracted so the typed-destination path and the natural-language path
+ * (src/llm/intent.ts) share one copy -- the language model is allowed to choose
+ * the travel mode, so without this the flight-300 / sea-100 / free-sail-2 rules
+ * would exist in two places and drift.
+ */
+export function deriveMove(
+  moveMode: EdgeKind,
+  money: number,
+  lastRoll: number | null,
+): MoveCost {
+  let steps: number;
+  if (moveMode === 'flight') {
+    steps = 1;
+  } else if (moveMode === 'sea' && money < 100) {
+    steps = 2;
+  } else if (lastRoll === null) {
+    return { ok: false, error: 'Roll the dice first.' };
+  } else {
+    steps = lastRoll;
+  }
+
+  const cost =
+    moveMode === 'flight'
+      ? 300
+      : moveMode === 'sea' && money >= 100
+        ? 100
+        : 0;
+
+  if (cost > 0 && money < cost) {
+    return {
+      ok: false,
+      error: `You need at least ${cost} to travel by ${moveMode}.`,
+    };
+  }
+
+  return { ok: true, steps, cost };
+}
 
 export const CARD_PAYOUT: Partial<Record<CardKind, number>> = {
   topaz: 300,

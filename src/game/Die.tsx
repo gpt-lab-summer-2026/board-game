@@ -1,6 +1,6 @@
 // Die.js File
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 import './Die.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { IconName } from '@fortawesome/fontawesome-svg-core';

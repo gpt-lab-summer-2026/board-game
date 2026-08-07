@@ -1,12 +1,18 @@
-"""Local web UI: a text box showing the latest game-response message.
+"""JSON status endpoint for the voice loop.
 
-Runs a tiny stdlib-only HTTP server in a background thread, so the same
-process listening to the mic can also drive a browser tab open on a screen
-next to the board. No websockets -- the page just polls /status once a
-second, which is plenty responsive for turn-based updates.
+Runs a tiny stdlib-only HTTP server in a background thread so the process
+listening to the mic can publish what it heard to whatever is displaying the
+board. Turn-based updates don't need websockets -- a client polls /status.
 
-Binds to 0.0.0.0 so a phone/tablet on the same LAN can open it too. There's
-no auth on this -- fine for a home network, not something to expose further.
+This used to also serve static files straight out of the repo root, which was
+a bad idea twice over: it put an index.html at the root that collided with
+Vite's entry point (and got resolved the wrong way in a merge, leaving the
+React app unable to mount), and since the server binds 0.0.0.0 it handed any
+device on the LAN the whole repository -- .git/config, voice/*.py, the 2.3GB
+model file. The React app is the UI now, so the static serving is gone and
+this is a JSON API only.
+
+Still unauthenticated: fine on a home network, not something to expose further.
 """
 from __future__ import annotations
 
@@ -14,12 +20,9 @@ import json
 import logging
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from urllib.parse import urlsplit
 
 log = logging.getLogger(__name__)
-
-STATIC_DIR = Path(__file__).resolve().parent.parent  # repo root: index.html, script.js, style.css
-_CONTENT_TYPES = {".html": "text/html", ".js": "application/javascript", ".css": "text/css"}
 
 
 class UiServer:
@@ -33,12 +36,12 @@ class UiServer:
 
     def start(self) -> None:
         self._thread.start()
-        log.info("UI server listening on http://0.0.0.0:%d", self._httpd.server_port)
+        log.info("Status server listening on http://0.0.0.0:%d/status", self._httpd.server_port)
 
     def set_message(self, text: str, event: dict | None = None) -> None:
         """event is a generic structured signal (e.g. {"type": "square_landed",
-        "square_type": "large_gem"}) for a future frontend to react to beyond
-        plain text -- this module makes no assumptions about how it's rendered."""
+        "square_type": "large_gem"}) for a frontend to react to beyond plain
+        text -- this module makes no assumptions about how it's rendered."""
         with self._lock:
             self._message = text
             self._event = event
@@ -57,25 +60,17 @@ def _build_handler(server: UiServer):
             log.debug(fmt, *args)
 
         def do_GET(self):
-            if self.path == "/status":
-                body = json.dumps(server.get_status()).encode()
-                self._send(200, "application/json", body)
-                return
-
-            requested = (STATIC_DIR / (self.path.lstrip("/") or "index.html")).resolve()
-            if requested != STATIC_DIR and STATIC_DIR not in requested.parents:
-                self.send_error(403)  # path escaped STATIC_DIR (e.g. "../../etc/passwd")
-                return
-            if not requested.is_file():
+            # Split off any query string: a polling client cache-busting with
+            # /status?t=123 was previously falling through to a 404.
+            if urlsplit(self.path).path != "/status":
                 self.send_error(404)
                 return
-            content_type = _CONTENT_TYPES.get(requested.suffix, "application/octet-stream")
-            self._send(200, content_type, requested.read_bytes())
-
-        def _send(self, status: int, content_type: str, body: bytes) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
+            body = json.dumps(server.get_status()).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
+            # The board UI is served by Vite on another port, so it needs this.
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(body)
 
