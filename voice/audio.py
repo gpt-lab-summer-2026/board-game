@@ -18,6 +18,7 @@ pyannote expect.
 from __future__ import annotations
 
 import logging
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -34,9 +35,22 @@ log = logging.getLogger(__name__)
 class AudioCapture:
     def __init__(self, cfg: AudioConfig):
         self.cfg = cfg
+        # pw-record is Linux/PipeWire-only -- never present on macOS, which has no
+        # PipeWire at all. This dev-machine fallback goes through ffmpeg's avfoundation
+        # input instead, purely so wake-word/speaker-ID/STT can be exercised off the Pi.
+        # It doesn't replace pw-record's role there: whenever pw-record IS on PATH (i.e.
+        # on the Pi), it's used, unconditionally.
+        self._backend = "pw-record" if shutil.which("pw-record") else "ffmpeg"
+        if self._backend == "ffmpeg":
+            log.info("pw-record not found; capturing via ffmpeg (avfoundation) instead")
 
     def record_seconds(self, seconds: float) -> np.ndarray:
         log.info("Recording %.1fs at %d Hz...", seconds, self.cfg.capture_rate)
+        if self._backend == "ffmpeg":
+            return self._record_seconds_ffmpeg(seconds)
+        return self._record_seconds_pw(seconds)
+
+    def _record_seconds_pw(self, seconds: float) -> np.ndarray:
         with tempfile.NamedTemporaryFile(suffix=".wav") as f:
             proc = subprocess.Popen(
                 ["pw-record", "--rate", str(self.cfg.capture_rate),
@@ -54,12 +68,35 @@ class AudioCapture:
         audio = np.frombuffer(raw, dtype="int16").astype("float32") / 32768.0
         return resample(audio, self.cfg.capture_rate, self.cfg.sample_rate)
 
+    def _record_seconds_ffmpeg(self, seconds: float) -> np.ndarray:
+        # Unlike pw-record, ffmpeg exits on its own once -t elapses -- no SIGINT dance
+        # needed to get a valid WAV footer.
+        with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+            subprocess.run(
+                ["ffmpeg", "-y", "-nostdin", "-loglevel", "error",
+                 "-f", "avfoundation", "-i", f":{self.cfg.mac_input_device}",
+                 "-t", str(seconds),
+                 "-ar", str(self.cfg.capture_rate), "-ac", str(self.cfg.channels),
+                 f.name],
+                check=True,
+            )
+            with wave.open(f.name, "rb") as wav:
+                raw = wav.readframes(wav.getnframes())
+        audio = np.frombuffer(raw, dtype="int16").astype("float32") / 32768.0
+        return resample(audio, self.cfg.capture_rate, self.cfg.sample_rate)
+
     def stream_16k_chunks(self, chunk_samples: int = 1280):
         """Continuously yield int16 mono 16kHz chunks of `chunk_samples` for as long
         as the caller keeps iterating -- for wake-word listening, which needs a live
         stream rather than record_seconds()'s fixed-length blocking capture. Tearing
-        down the loop (break / generator close) stops the pw-record process.
+        down the loop (break / generator close) stops the capture process.
         """
+        if self._backend == "ffmpeg":
+            yield from self._stream_ffmpeg(chunk_samples)
+        else:
+            yield from self._stream_pw(chunk_samples)
+
+    def _stream_pw(self, chunk_samples: int):
         native_chunk = chunk_samples * self.cfg.capture_rate // self.cfg.sample_rate
         bytes_per_chunk = native_chunk * 2  # s16 = 2 bytes/sample, mono
         proc = subprocess.Popen(
@@ -79,6 +116,35 @@ class AudioCapture:
         finally:
             proc.terminate()
             proc.wait(timeout=5)
+
+    def _stream_ffmpeg(self, chunk_samples: int):
+        native_chunk = chunk_samples * self.cfg.capture_rate // self.cfg.sample_rate
+        bytes_per_chunk = native_chunk * 2  # s16 = 2 bytes/sample, mono
+        proc = subprocess.Popen(
+            ["ffmpeg", "-nostdin", "-loglevel", "error",
+             "-f", "avfoundation", "-i", f":{self.cfg.mac_input_device}",
+             "-ar", str(self.cfg.capture_rate), "-ac", str(self.cfg.channels),
+             "-f", "s16le", "-"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+        try:
+            while True:
+                raw = proc.stdout.read(bytes_per_chunk)
+                if len(raw) < bytes_per_chunk:
+                    log.warning("ffmpeg stream ended unexpectedly")
+                    break
+                native = np.frombuffer(raw, dtype="int16").astype("float32") / 32768.0
+                chunk = resample(native, self.cfg.capture_rate, self.cfg.sample_rate)
+                yield (np.clip(chunk, -1.0, 1.0) * 32767).astype("int16")
+        finally:
+            # Unlike pw-record, ffmpeg reading an avfoundation session doesn't reliably
+            # exit on SIGTERM alone -- observed hanging past a 5s wait in testing.
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
 
 
 def resample(samples: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:

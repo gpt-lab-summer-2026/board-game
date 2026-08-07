@@ -38,13 +38,26 @@ class WakeWordDetector:
         warnings.filterwarnings("ignore", message=r"Specified provider 'CUDAExecutionProvider'",
                                  category=UserWarning)
 
-        if cfg.model not in openwakeword.models:
+        # openwakeword renamed this dict from `models` to `MODELS` at some point after
+        # this code was written; 0.6.0 (the currently installed version) only has `MODELS`.
+        if cfg.model not in openwakeword.MODELS:
             raise ValueError(
-                f"Unknown wake word {cfg.model!r}; bundled options: {sorted(openwakeword.models)}"
+                f"Unknown wake word {cfg.model!r}; bundled options: {sorted(openwakeword.MODELS)}"
             )
         self.cfg = cfg
-        model_path = openwakeword.models[cfg.model]["model_path"]
-        self._model = Model(wakeword_model_paths=[model_path])
+        model_path = openwakeword.MODELS[cfg.model]["model_path"]
+        try:
+            self._model = Model(wakeword_models=[model_path])
+        except ValueError as e:
+            # openwakeword's pip package ships no model weights at all -- MODELS just lists
+            # their names/URLs. A fresh install needs a one-time download before any model
+            # name resolves to a real file, which is what this actually was, however it reads.
+            raise RuntimeError(
+                "Couldn't load the wake word model -- if this is a fresh install, fetch the "
+                "bundled model weights once with: python -c "
+                "\"from openwakeword.utils import download_models; download_models()\". "
+                f"Original error: {e}"
+            ) from e
         self._model_name = next(iter(self._model.models))
         self._armed = True  # fires once per rise above threshold, not once per frame while held
 

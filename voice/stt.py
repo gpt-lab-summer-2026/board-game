@@ -25,13 +25,20 @@ class CommandTranscriber:
         log.info("Loading whisper model %s (%s/%s)...", cfg.model, cfg.device, cfg.compute_type)
         self._model = WhisperModel(cfg.model, device=cfg.device, compute_type=cfg.compute_type)
 
-    def transcribe(self, audio: np.ndarray) -> str:
-        """audio: mono float32 [-1, 1] samples at 16 kHz."""
-        # record_seconds() always grabs a fixed 6s window regardless of when the player
-        # actually starts/stops talking, so there's usually leading/trailing silence in
-        # it; without VAD, whisper transcribes that silence as part of the utterance too
-        # (prone to hallucinated words), instead of just skipping straight to the speech.
+    def transcribe(self, audio: np.ndarray, vad_filter: bool = True) -> str:
+        """audio: mono float32 [-1, 1] samples at 16 kHz.
+
+        vad_filter defaults on: record_seconds() always grabs a fixed window
+        regardless of when the player actually starts/stops talking, so there's
+        usually leading/trailing silence in it; without VAD, whisper transcribes
+        that silence as part of the utterance too (prone to hallucinated words),
+        instead of just skipping straight to the speech. Exposed as a parameter
+        because that same filtering can also discard real speech it misjudges as
+        non-speech -- see test_stt.py, which is built specifically to tell those
+        two failure modes apart.
+        """
         segments, _info = self._model.transcribe(audio, language=self.cfg.language, beam_size=5,
-                                                   vad_filter=True,
+                                                   vad_filter=vad_filter,
                                                    initial_prompt=self.cfg.initial_prompt)
+        print(segments)
         return " ".join(seg.text.strip() for seg in segments).strip()

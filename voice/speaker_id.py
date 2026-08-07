@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -21,6 +22,14 @@ log = logging.getLogger(__name__)
 
 EMBED_SAMPLE_RATE = 16000
 
+# Same models/ convention as tts.py's Kokoro files: a local copy checked into place by
+# hand, so the mic pipeline never needs a network round-trip once it's there. This is
+# just the checkpoint pyannote/wespeaker-voxceleb-resnet34-LM downloads to on first run
+# (see hf_hub_download's cache) -- copy pytorch_model.bin here from
+# ~/.cache/huggingface/hub/models--pyannote--wespeaker-voxceleb-resnet34-LM/blobs/ (the
+# ~26MB one) to skip the Hub entirely on every later run.
+LOCAL_CHECKPOINT_PATH = Path(__file__).parent / "models" / "wespeaker-voxceleb-resnet34-LM" / "pytorch_model.bin"
+
 
 class SpeakerEmbedder:
     def __init__(self, cfg: SpeakerIdConfig):
@@ -28,18 +37,31 @@ class SpeakerEmbedder:
         from pyannote.audio import Inference, Model
 
         self._torch = torch
-        log.info("Loading speaker embedding model...")
-        # cfg.hf_token defaults to True, i.e. "use whatever `hf auth login` cached" --
-        # huggingface_hub resolves that itself, so there's nothing to validate up front.
-        # Only a real auth failure (bad/missing login, no gated-model access) should error,
-        # and pyannote/huggingface_hub already raise a clear message for that on their own.
+
+        # Model.from_pretrained treats an existing file path as a fully local load --
+        # no huggingface_hub call at all in that branch, so no network, no login, no
+        # dependence on the Hub being reachable. Falls back to the Hub only if this
+        # project's local copy hasn't been placed yet.
+        if LOCAL_CHECKPOINT_PATH.exists():
+            log.info("Loading speaker embedding model from local copy (%s)...", LOCAL_CHECKPOINT_PATH)
+            checkpoint = str(LOCAL_CHECKPOINT_PATH)
+        else:
+            log.info("Loading speaker embedding model from Hugging Face Hub (no local copy at %s)...",
+                     LOCAL_CHECKPOINT_PATH)
+            # pyannote/wespeaker-voxceleb-resnet34-LM is a public, ungated repo -- confirmed by
+            # downloading it anonymously (token=False) directly. cfg.hf_token defaults to None,
+            # which tells huggingface_hub "send a cached login token if one exists, but don't
+            # require one" -- the correct default for a model that doesn't need auth at all.
+            # Passing True instead forces "a token must exist," which fails even for a public
+            # repo if you've never run `hf auth login`.
+            checkpoint = "pyannote/wespeaker-voxceleb-resnet34-LM"
+
         try:
-            model = Model.from_pretrained("pyannote/wespeaker-voxceleb-resnet34-LM", token=cfg.hf_token)
+            model = Model.from_pretrained(checkpoint, token=cfg.hf_token)
         except Exception as e:
             raise RuntimeError(
-                "Couldn't load the pyannote embedding model -- if you haven't already, run "
-                "`hf auth login` once to authenticate, or pass an explicit token via --hf-token "
-                f"/ HF_TOKEN. Original error: {e}"
+                "Couldn't load the pyannote embedding model -- pass an explicit token via "
+                f"--hf-token / HF_TOKEN if this is a network/rate-limit issue. Original error: {e}"
             ) from e
         model.to(torch.device(cfg.device))
         # window="whole" gives ONE vector for the whole clip, instead of the diarization

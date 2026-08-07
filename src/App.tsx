@@ -8,6 +8,7 @@ import Board from './game/board';
 import RollDice from './game/RollDice';
 import GameStats, {
   type GameState,
+  type GameStatsHandle,
   type PlayerSetup,
 } from './game/GameStats';
 import { library } from '@fortawesome/fontawesome-svg-core';
@@ -30,6 +31,8 @@ import {
 } from './game/rules';
 import { resolveMoveIntent } from './llm/intent';
 import { chooseDestination } from './llm/heading';
+import { useVoiceControl } from './voice/useVoiceControl';
+import VoiceIndicator from './voice/VoiceIndicator';
 
 export type Player = {
   id: string;
@@ -110,6 +113,14 @@ function App() {
     string | null
   >(null);
   const llmAbort = useRef<AbortController | null>(null);
+
+  // Refs voice control (see useVoiceControl below) uses to act on a recognized
+  // command: gameStatsRef adds a player / triggers "Begin!" the same way typing
+  // + clicking would; rollDiceRef triggers a "roll" onto whichever RollDice
+  // instance is currently mounted (only one of the three JSX usages below is
+  // ever mounted at once).
+  const gameStatsRef = useRef<GameStatsHandle>(null);
+  const rollDiceRef = useRef<RollDice>(null);
 
   // Set when a move stopped early at a city that still has a face-down card, so
   // the player can look at it. Declining leaves the rest of the roll unspent,
@@ -390,7 +401,7 @@ function App() {
    * piece actually lands is decided here by the same findMoves the typed path
    * uses. Takes ~10s on this machine, hence the pending state and cancel.
    */
-  const askClick = async () => {
+  const askClick = async (transcript: string) => {
     if (llmPending) return;
     const controller = new AbortController();
     llmAbort.current = controller;
@@ -400,7 +411,7 @@ function App() {
 
     try {
       const result = await resolveMoveIntent({
-        transcript: nlText,
+        transcript,
         currentPlaceId: currentPlayer.placeId,
         money: currentPlayer.money,
         lastRoll,
@@ -427,6 +438,22 @@ function App() {
       llmAbort.current = null;
     }
   };
+
+  // Everything voice-related lives in this one hook -- see its own doc comment
+  // for what it does; App just hands it the state/refs it needs to act, and
+  // renders the {connected, voiceStatus} it hands back (see VoiceIndicator).
+  const voice = useVoiceControl({
+    gameState,
+    setGameState,
+    currentPlayer,
+    llmPending,
+    hasPendingCard: pendingCard !== null,
+    lastRoll,
+    moveMode,
+    askClick,
+    gameStatsRef,
+    rollDiceRef,
+  });
 
   const resolveCard = (action: 'pay' | 'wait' | 'skip') => {
     if (!pendingCard) return;
@@ -568,8 +595,10 @@ function App() {
       </div>
       <div className='game-info'>
         gaming stats
+        <VoiceIndicator voice={voice} />
         {!winner && (
           <GameStats
+            ref={gameStatsRef}
             gameState={gameState}
             onStartGame={() => setGameState('starting')}
             onBeginGame={setups => {
@@ -624,7 +653,10 @@ function App() {
                       : 'Held by pirates at the island!'}{' '}
                     Roll 1 or 2 to escape.
                   </p>
-                  <RollDice onRoll={attemptEscape} />
+                  <RollDice
+                    ref={rollDiceRef}
+                    onRoll={attemptEscape}
+                  />
                 </div>
               )}
 
@@ -653,6 +685,7 @@ function App() {
                     — roll 4, 5 or 6.
                   </p>
                   <RollDice
+                    ref={rollDiceRef}
                     onRoll={attemptClaimWhileWaiting}
                   />
                 </div>
@@ -743,6 +776,7 @@ function App() {
                       currentPlayer.money >= 100)) && (
                     <>
                       <RollDice
+                        ref={rollDiceRef}
                         // One roll per turn. Without this you can simply keep
                         // clicking until you like the number -- switching to Air
                         // and back just made it obvious, because Air needs no
@@ -791,9 +825,8 @@ function App() {
                   </label>
                   {moveError && <p>{moveError}</p>}
 
-                  {/* Typed, not spoken -- the microphone pipeline in voice/
-                      isn't wired to the browser yet. Labelled explicitly
-                      because "say it" read as "talk to it". */}
+                  {/* Also reachable by voice -- see handleVoiceTranscript above.
+                      Labelled explicitly because "say it" read as "talk to it". */}
                   <label>
                     type a move:{' '}
                     <input
@@ -807,7 +840,7 @@ function App() {
                       }
                     />
                     <button
-                      onClick={askClick}
+                      onClick={() => askClick(nlText)}
                       disabled={
                         llmPending || nlText.trim() === ''
                       }

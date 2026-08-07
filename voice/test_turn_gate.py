@@ -1,9 +1,14 @@
-"""Manual test: wake word + speaker-ID turn gating.
+"""Manual test: wake word + speaker-ID turn gating, with a fixed player list and
+a crude keyword-based command handler (game_stub.py) standing in for the real
+UI/LLM. For the real thing -- voice-driven setup and a browser that actually
+runs the game -- see play_game.py instead; this file is just a lighter-weight
+way to sanity-check the mic/wake-word/speaker-ID pipeline on its own.
 
 Enrolls each player's voice at the start of a game, then listens continuously
 for the wake word. On detection, identifies who said it from the enrolled
 voices and checks it against whichever player's turn it currently is (a
-simple round-robin here -- there's no real game state to hook into yet).
+simple round-robin here -- there's no real game state to hook into in this
+file specifically).
 
 This replaces the earlier full-diarization test: we don't need a running
 transcript or word timestamps, just "was that the right player's voice,
@@ -42,8 +47,9 @@ def parse_args():
     p.add_argument("--wake-word", default="hey_jarvis", help="bundled openWakeWord model name")
     p.add_argument("--threshold", type=float, default=0.5, help="wake word detection threshold")
     p.add_argument("--match-threshold", type=float, default=0.5, help="cosine similarity match threshold")
-    p.add_argument("--hf-token", default=os.environ.get("HF_TOKEN") or True,
-                    help="defaults to whatever `hf auth login` cached; set HF_TOKEN to override")
+    p.add_argument("--hf-token", default=os.environ.get("HF_TOKEN"),
+                    help="the embedding model is a public repo, so this is normally unneeded; "
+                         "set HF_TOKEN to force an explicit token (e.g. to avoid rate limits)")
     p.add_argument("--ui-port", type=int, default=8765, help="local web UI port")
     p.add_argument("-v", "--verbose", action="store_true")
     return p.parse_args()
@@ -55,8 +61,8 @@ def main():
                          format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     players = [p.strip() for p in args.players.split(",") if p.strip()]
-    if len(players) < 2:
-        raise SystemExit("need at least 2 players, e.g. --players Alice,Bob")
+    if len(players) < 1:
+        raise SystemExit("need at least 1 player, e.g. --players Alice")
 
     audio_cfg = AudioConfig()
     capture = AudioCapture(audio_cfg)
@@ -86,6 +92,7 @@ def main():
         command_audio = capture.record_seconds(COMMAND_SECONDS)
         transcript = transcriber.transcribe(command_audio)
         print(f"Command: {transcript!r}")
+        ui.broadcast_transcript(name, transcript)
 
         next_player = players[(turn_idx + 1) % len(players)]
         response = process_command(transcript, current_player=name, next_player=next_player)

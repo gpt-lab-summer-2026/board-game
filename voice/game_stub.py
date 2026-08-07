@@ -1,10 +1,12 @@
-"""Placeholder for the gemma3 command handler.
+"""Placeholder command handler, used only by test_turn_gate.py.
 
-This is deliberately NOT the real thing -- gemma3 integration is a separate,
-later step. It exists so the response outlet (tts.py speaking it, ui_server.py
-displaying it) can be exercised end to end with representative text before
-the real SLM is wired in. `process_command` should be a drop-in replacement
-site for an actual gemma3 call: same inputs, same kind of short response string.
+Real gemma3 integration happened -- just not here. It lives in the browser
+(src/llm/intent.ts's resolveMoveIntent, reached from play_game.py's voice
+websocket bridge instead of a direct Python call) because the browser is what
+holds the actual board/game state a move needs to be resolved against. This
+stub exists only so test_turn_gate.py -- which exercises the mic pipeline on
+its own, with no browser involved -- has something to feed its response outlet
+(tts.py speaking it, ui_server.py displaying it) with representative text.
 """
 from __future__ import annotations
 

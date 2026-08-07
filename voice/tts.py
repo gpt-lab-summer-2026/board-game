@@ -15,8 +15,8 @@ import numpy as np
 
 log = logging.getLogger(__name__)
 
-DEFAULT_MODEL_PATH = "models/kokoro/kokoro-v1.0.onnx"
-DEFAULT_VOICES_PATH = "models/kokoro/voices-v1.0.bin"
+DEFAULT_MODEL_PATH = str(Path(__file__).parent / "models" / "kokoro-v1.0.onnx")
+DEFAULT_VOICES_PATH = str(Path(__file__).parent / "models" / "voices-v1.0.bin")
 
 
 class KokoroSpeaker:

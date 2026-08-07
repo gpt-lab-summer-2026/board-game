@@ -69,3 +69,22 @@ def wait_for_activation(capture, detector: WakeWordDetector, embedder: SpeakerEm
 
         print(f"Wake word heard from {expected} (match {score:.2f}) -- ACTIVATED.")
         return expected, score
+
+
+def wait_for_wake_word(capture, detector: WakeWordDetector, rolling) -> np.ndarray:
+    """Block until the wake word is heard, with no speaker check at all -- for
+    play_game.py's voice-driven setup phase, where there's no "expected" player
+    yet (the roster is still being built one enrollment at a time). Returns the
+    same short ID-buffer clip wait_for_activation uses for its own embedding, so
+    a caller can embed it the identical way and run roster.identify() on it.
+
+    Same reasoning as wait_for_activation for running its own stream loop and
+    returning out of it, rather than being called in a loop by the caller: this
+    hardware doesn't tolerate two simultaneous input streams (see audio.py).
+    """
+    for chunk in capture.stream_16k_chunks(CHUNK_SAMPLES):
+        rolling.append(chunk)
+        event = detector.process_chunk(chunk)
+        if event is None:
+            continue
+        return np.concatenate(list(rolling))

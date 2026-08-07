@@ -9,7 +9,7 @@ export type CardKind =
   | 'ruby'
   | 'star';
 
-export type MoveCost =
+type MoveCost =
   | { ok: true; steps: number; cost: number }
   | { ok: false; error: string };
 
@@ -99,7 +99,7 @@ export function createDeck(
 // either one wins the game.
 export const HOME_CITY_IDS = ['keskustori', 'tammelan-tori'];
 
-export type SpecialEffect =
+type SpecialEffect =
   | 'capetown'
   | 'goldCoast'
   | 'slaveCoast'

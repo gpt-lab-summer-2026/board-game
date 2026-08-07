@@ -33,6 +33,13 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: path => path.replace(/^\/llm/, ''),
       },
+      // Same relative-URL reasoning as /llm above, for the transcript
+      // websocket ui_server.py broadcasts on (see voice/ui_server.py).
+      '/voice-ws': {
+        target: 'ws://127.0.0.1:8766',
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
 })

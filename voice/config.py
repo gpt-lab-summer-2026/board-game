@@ -14,6 +14,9 @@ class AudioConfig:
     # No device index here (unlike the old sounddevice-based capture): pw-record targets
     # PipeWire's current default source. Change the input device with `wpctl set-default`
     # or `pw-record --target`, not through this config.
+    #
+    # check with `ffmpeg -f avfoundation -list_devices true -i ""` and set this to match.
+    mac_input_device: str = "1"
 
 
 @dataclass
@@ -26,9 +29,10 @@ class WakeWordConfig:
 @dataclass
 class SpeakerIdConfig:
     device: str = "cpu"
-    # True = use whatever `hf auth login` already cached (the normal case); pass a
-    # string to override with an explicit token instead.
-    hf_token: object = True
+    # None = send a cached `hf auth login` token if one exists, but don't require one --
+    # the wespeaker embedding model is a public, ungated repo. Pass a string to force an
+    # explicit token instead (e.g. to dodge anonymous-request rate limits).
+    hf_token: object = None
     match_threshold: float = 0.5       # cosine similarity below this = "unrecognized voice"
 
 
