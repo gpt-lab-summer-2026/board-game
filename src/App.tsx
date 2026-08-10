@@ -8,6 +8,7 @@ import Board from './game/board';
 import RollDice from './game/RollDice';
 import GameStats, {
   type GameState,
+  type GameStatsHandle,
   type PlayerSetup,
 } from './game/GameStats';
 import { library } from '@fortawesome/fontawesome-svg-core';
@@ -23,6 +24,7 @@ import {
   createDeck,
   deriveMove,
   CARD_PAYOUT,
+  CARD_IMAGES,
   HOME_CITY_IDS,
   SPECIAL_CITIES,
   type CardKind,
@@ -30,6 +32,8 @@ import {
 } from './game/rules';
 import { resolveMoveIntent } from './llm/intent';
 import { chooseDestination } from './llm/heading';
+import { useVoiceControl } from './voice/useVoiceControl';
+import VoiceIndicator from './voice/VoiceIndicator';
 
 export type Player = {
   id: string;
@@ -94,6 +98,10 @@ function App() {
   const [infoMessage, setInfoMessage] = useState<
     string | null
   >(null);
+  // Which card's front face to show alongside infoMessage -- only set once a
+  // card is actually claimed, since the board keeps every unclaimed card face down.
+  const [revealedCard, setRevealedCard] =
+    useState<CardKind | null>(null);
   const [gameState, setGameState] =
     useState<GameState>('notStarted');
 
@@ -110,6 +118,14 @@ function App() {
     string | null
   >(null);
   const llmAbort = useRef<AbortController | null>(null);
+
+  // Refs voice control (see useVoiceControl below) uses to act on a recognized
+  // command: gameStatsRef adds a player / triggers "Begin!" the same way typing
+  // + clicking would; rollDiceRef triggers a "roll" onto whichever RollDice
+  // instance is currently mounted (only one of the three JSX usages below is
+  // ever mounted at once).
+  const gameStatsRef = useRef<GameStatsHandle>(null);
+  const rollDiceRef = useRef<RollDice>(null);
 
   // Set when a move stopped early at a city that still has a face-down card, so
   // the player can look at it. Declining leaves the rest of the roll unspent,
@@ -252,6 +268,7 @@ function App() {
     );
     setCapetownAwarded(nextCapetownAwarded);
     setInfoMessage(capetownMessage);
+    setRevealedCard(null);
     setLastRoll(null);
     setText('');
     setMoveError(null);
@@ -356,6 +373,12 @@ function App() {
     applyArrival(path[stopIndex], cost);
   };
 
+  /** Give up the rest of the roll after declining a card en route. */
+  const stopMove = () => {
+    setPendingMove(null);
+    advanceTurn();
+  };
+
   /** Spend what's left of the roll after declining a card en route. */
   const continueMove = () => {
     if (!pendingMove) return;
@@ -389,8 +412,16 @@ function App() {
    * Turtola". gemma3 only extracts a heading city and a travel mode; where the
    * piece actually lands is decided here by the same findMoves the typed path
    * uses. Takes ~10s on this machine, hence the pending state and cancel.
+   *
+   * rollOverride is for a voice command that rolled and named a destination in
+   * the same breath ("roll the dice and head for Hakametsä"): useVoiceControl
+   * awaits the roll itself and passes the real value straight through here,
+   * because by the time that await resolves, THIS closure's own `lastRoll` is
+   * whatever it was when this function was handed to the hook -- React hasn't
+   * re-rendered with the new roll yet, so reading the state directly would use
+   * a stale null and reject the move with "roll the dice first".
    */
-  const askClick = async () => {
+  const askClick = async (transcript: string, rollOverride?: number) => {
     if (llmPending) return;
     const controller = new AbortController();
     llmAbort.current = controller;
@@ -400,10 +431,10 @@ function App() {
 
     try {
       const result = await resolveMoveIntent({
-        transcript: nlText,
+        transcript,
         currentPlaceId: currentPlayer.placeId,
         money: currentPlayer.money,
-        lastRoll,
+        lastRoll: rollOverride ?? lastRoll,
         uiMode: moveMode,
         signal: controller.signal,
       });
@@ -446,6 +477,7 @@ function App() {
       );
       player = result.player;
       setInfoMessage(result.message);
+      setRevealedCard(kind);
       removeCard(cityId);
     } else if (action === 'wait') {
       player = {
@@ -453,8 +485,10 @@ function App() {
         status: { type: 'waitingForCard', cityId },
       };
       setInfoMessage(null);
+      setRevealedCard(null);
     } else {
       setInfoMessage(null);
+      setRevealedCard(null);
     }
 
     setPlayers(
@@ -509,11 +543,13 @@ function App() {
         ),
       );
       setInfoMessage(result.message);
+      setRevealedCard(kind);
       removeCard(cityId);
     } else {
       setInfoMessage(
         `Rolled ${roll} — not enough to claim the card yet.`,
       );
+      setRevealedCard(null);
     }
     advanceTurn();
   };
@@ -541,6 +577,32 @@ function App() {
     if (!freed) advanceTurn();
   };
 
+  // Everything voice-related lives in this one hook -- see its own doc comment
+  // for what it does; App just hands it the state/refs it needs to act, and
+  // renders the {connected, voiceStatus} it hands back (see VoiceIndicator).
+  const voice = useVoiceControl({
+    gameState,
+    setGameState,
+    currentPlayer,
+    llmPending,
+    setLlmPending,
+    hasPendingCard: pendingCard !== null,
+    hasPendingMove: pendingMove !== null && pendingMove.remainingSteps > 0,
+    lastRoll,
+    moveMode,
+    askClick,
+    onContinueSlaveTurn: continueSlaveTurn,
+    onResolveCard: resolveCard,
+    onContinueMove: continueMove,
+    onStopMove: stopMove,
+    onUnrecognizedVoiceCommand: (message: string | null) => {
+      setInfoMessage(message);
+      setRevealedCard(null);
+    },
+    gameStatsRef,
+    rollDiceRef,
+  });
+
   const change = (event: ChangeEvent<HTMLInputElement>) => {
     setText(event.target.value);
   };
@@ -553,6 +615,7 @@ function App() {
     setText('');
     setMoveError(null);
     setInfoMessage(null);
+    setRevealedCard(null);
     setCards({});
     setPendingCard(null);
     setCapetownAwarded(false);
@@ -567,9 +630,45 @@ function App() {
         <Board players={players} cards={cards} />
       </div>
       <div className='game-info'>
-        gaming stats
+        <h2 className='game-info-title'>Gaming stats</h2>
+        <VoiceIndicator voice={voice} />
+        {players.length > 0 && (
+          <ul className='player-roster'>
+            {players.map((player, index) => (
+              <li
+                key={player.id}
+                className={
+                  'player-roster-row' +
+                  (index === turnIndex && !winner
+                    ? ' player-roster-row-active'
+                    : '')
+                }
+              >
+                <span
+                  className='player-roster-dot'
+                  style={{ backgroundColor: player.pieceColor }}
+                />
+                <span className='player-roster-name'>
+                  {player.name}
+                </span>
+                <span className='player-roster-detail'>
+                  {spaceById[player.placeId]?.name ?? player.placeId}
+                </span>
+                <span className='player-roster-detail'>
+                  {player.money}
+                </span>
+                {player.status && (
+                  <span className='player-roster-status'>
+                    {player.status.type}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
         {!winner && (
           <GameStats
+            ref={gameStatsRef}
             gameState={gameState}
             onStartGame={() => setGameState('starting')}
             onBeginGame={setups => {
@@ -613,6 +712,13 @@ function App() {
                 {spaceById[currentPlayer.placeId].name}
               </p>
               {infoMessage && <p>{infoMessage}</p>}
+              {revealedCard && (
+                <img
+                  className='revealed-card'
+                  src={CARD_IMAGES[revealedCard]}
+                  alt={`${revealedCard} card`}
+                />
+              )}
 
               {currentPlayer.status?.type ===
                 'captured' && (
@@ -624,7 +730,10 @@ function App() {
                       : 'Held by pirates at the island!'}{' '}
                     Roll 1 or 2 to escape.
                   </p>
-                  <RollDice onRoll={attemptEscape} />
+                  <RollDice
+                    ref={rollDiceRef}
+                    onRoll={attemptEscape}
+                  />
                 </div>
               )}
 
@@ -653,6 +762,7 @@ function App() {
                     — roll 4, 5 or 6.
                   </p>
                   <RollDice
+                    ref={rollDiceRef}
                     onRoll={attemptClaimWhileWaiting}
                   />
                 </div>
@@ -698,12 +808,7 @@ function App() {
                     <button onClick={continueMove}>
                       Continue moving
                     </button>
-                    <button
-                      onClick={() => {
-                        setPendingMove(null);
-                        advanceTurn();
-                      }}
-                    >
+                    <button onClick={stopMove}>
                       Stop here
                     </button>
                   </div>
@@ -743,6 +848,7 @@ function App() {
                       currentPlayer.money >= 100)) && (
                     <>
                       <RollDice
+                        ref={rollDiceRef}
                         // One roll per turn. Without this you can simply keep
                         // clicking until you like the number -- switching to Air
                         // and back just made it obvious, because Air needs no
@@ -791,9 +897,8 @@ function App() {
                   </label>
                   {moveError && <p>{moveError}</p>}
 
-                  {/* Typed, not spoken -- the microphone pipeline in voice/
-                      isn't wired to the browser yet. Labelled explicitly
-                      because "say it" read as "talk to it". */}
+                  {/* Also reachable by voice -- see handleVoiceTranscript above.
+                      Labelled explicitly because "say it" read as "talk to it". */}
                   <label>
                     type a move:{' '}
                     <input
@@ -807,7 +912,7 @@ function App() {
                       }
                     />
                     <button
-                      onClick={askClick}
+                      onClick={() => askClick(nlText)}
                       disabled={
                         llmPending || nlText.trim() === ''
                       }

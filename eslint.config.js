@@ -7,9 +7,10 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
   // llama.cpp is a vendored checkout that ships its own eslint config (and
-  // expects plugins we don't install); .venv and models are not source either.
-  // Flat config doesn't read .gitignore, so these have to be named explicitly.
-  globalIgnores(['dist', 'llama.cpp', 'models', '.venv', 'darknet']),
+  // expects plugins we don't install); .venv/game-venv and models are not
+  // source either. Flat config doesn't read .gitignore, so these have to be
+  // named explicitly.
+  globalIgnores(['dist', 'llama.cpp', 'models', '.venv', 'game-venv', 'darknet']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

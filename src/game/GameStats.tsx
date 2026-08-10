@@ -1,4 +1,9 @@
-import { useState, type ChangeEvent } from 'react';
+import {
+  useImperativeHandle,
+  useState,
+  type ChangeEvent,
+  type Ref,
+} from 'react';
 import './game.css';
 import { spaceById } from './boardDataRestructure';
 import { HOME_CITY_IDS } from './rules';
@@ -10,10 +15,21 @@ export type GameState =
 
 export type PlayerSetup = { name: string; startId: string };
 
+/**
+ * Lets voice input drive the same setup this component's own inputs/button
+ * do, without lifting names/startIds into App -- the form keeps owning its
+ * state, voice just calls the same effect a keystroke or click would have.
+ */
+export type GameStatsHandle = {
+  addPlayerByName: (name: string) => void;
+  triggerBegin: () => void;
+};
+
 type GameStatsProps = {
   gameState: GameState;
   onStartGame: () => void;
   onBeginGame: (players: PlayerSetup[]) => void;
+  ref?: Ref<GameStatsHandle>;
 };
 
 const MAX_PLAYERS = 5;
@@ -22,6 +38,7 @@ function GameStats({
   gameState,
   onStartGame,
   onBeginGame,
+  ref,
 }: GameStatsProps) {
   const [names, setNames] = useState<string[]>(
     Array(MAX_PLAYERS).fill(''),
@@ -36,10 +53,38 @@ function GameStats({
     ),
   );
 
+  useImperativeHandle(ref, () => ({
+    addPlayerByName(name: string) {
+      setNames(prev => {
+        const emptyIndex = prev.findIndex(
+          existing => existing.trim() === '',
+        );
+        if (emptyIndex === -1) return prev; // all MAX_PLAYERS slots taken
+        const next = [...prev];
+        next[emptyIndex] = name;
+        return next;
+      });
+    },
+    triggerBegin() {
+      const setups: PlayerSetup[] = names
+        .map((name, index) => ({
+          name: name.trim(),
+          startId: startIds[index],
+        }))
+        .filter(player => player.name !== '');
+      if (setups.length > 0) onBeginGame(setups);
+    },
+  }));
+
   if (gameState === 'notStarted') {
     return (
       <div className='gaming-stats'>
-        <button onClick={onStartGame}>Start game</button>
+        <button className='big-button' onClick={onStartGame}>
+          Start game
+        </button>
+        <p className='setup-instructions'>
+          Or just say your name -- e.g. "hey jarvis, I'm Alice" -- to join by voice.
+        </p>
       </div>
     );
   }
@@ -72,10 +117,14 @@ function GameStats({
 
     return (
       <div className='gaming-stats'>
-        <p>Choose players:</p>
+        <p className='setup-instructions'>Choose players:</p>
+        <p className='setup-instructions setup-instructions-voice'>
+          Say "player 1, Alice, player 2, Bob" (or one at a time: "I'm
+          Alice"). Once everyone's in, say "hey jarvis, begin".
+        </p>
         <div className='players-input'>
           {names.map((name, index) => (
-            <label key={index}>
+            <label key={index} className='player-input-row'>
               player {index + 1}:{' '}
               <input
                 type='text'
@@ -98,6 +147,7 @@ function GameStats({
         </div>
 
         <button
+          className='big-button'
           disabled={players.length === 0}
           onClick={() => onBeginGame(players)}
         >

@@ -26,7 +26,7 @@ const cityTable = cities
 export const SYSTEM_PROMPT = `You read a board-game player's spoken move and \
 extract two things: which city they are heading toward, and how they intend to \
 travel. You do not decide whether the move is legal -- the game engine does \
-that. Never invent a place that is not in the list below.
+that. Use places that are in the list below.
 
 The player names a place they are heading TOWARD. They will usually not reach \
 it this turn; that is fine and expected. Report the city they named.

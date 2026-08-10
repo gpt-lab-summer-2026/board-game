@@ -1,4 +1,12 @@
 import type { EdgeKind } from './boardDataRestructure';
+import backpackGif from '../assets/pop-ups/backpack.gif';
+import bicycleGif from '../assets/pop-ups/bicycle.gif';
+import bottleGif from '../assets/pop-ups/bottle.gif';
+import emptyGif from '../assets/pop-ups/empty.gif';
+import mustamakkaraGif from '../assets/pop-ups/mustamakr.gif';
+import nyssekorttiGif from '../assets/pop-ups/nyssekortti.gif';
+import cardBackGif from '../assets/pop-ups/tampereen-tuikahdus.gif';
+import zombiGif from '../assets/pop-ups/zombi.gif';
 
 export type CardKind =
   | 'blank'
@@ -9,7 +17,7 @@ export type CardKind =
   | 'ruby'
   | 'star';
 
-export type MoveCost =
+type MoveCost =
   | { ok: true; steps: number; cost: number }
   | { ok: false; error: string };
 
@@ -99,7 +107,7 @@ export function createDeck(
 // either one wins the game.
 export const HOME_CITY_IDS = ['keskustori', 'tammelan-tori'];
 
-export type SpecialEffect =
+type SpecialEffect =
   | 'capetown'
   | 'goldCoast'
   | 'slaveCoast'
@@ -115,19 +123,18 @@ export const SPECIAL_CITIES: Record<string, SpecialEffect> =
     finlayson: 'sahara',
   };
 
-// Placeholder look for each cardboard piece on the board, until real
-// artwork/gif animations are swapped in later.
-export const CARD_DISPLAY: Record<
-  CardKind,
-  { label: string; color: string }
-> = {
-  star: { label: '★', color: '#ffffff' },
-  ruby: { label: 'R', color: '#e0115f' },
-  emerald: { label: 'E', color: '#50c878' },
-  topaz: { label: 'T', color: '#ffc040' },
-  horseshoe: { label: 'H', color: '#b0b0b0' },
-  robber: { label: 'X', color: '#333333' },
-  blank: { label: '', color: '#999999' },
+// Cards sit face-down on the board (CARD_BACK_IMAGE) so a card's kind isn't
+// visible until a player actually claims it -- these are what gets revealed then.
+export const CARD_BACK_IMAGE = cardBackGif;
+
+export const CARD_IMAGES: Record<CardKind, string> = {
+  star: mustamakkaraGif,
+  ruby: bicycleGif,
+  emerald: backpackGif,
+  topaz: bottleGif,
+  horseshoe: nyssekorttiGif,
+  robber: zombiGif,
+  blank: emptyGif,
 };
 
 export type PlayerStatus =

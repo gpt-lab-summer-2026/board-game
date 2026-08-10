@@ -35,25 +35,37 @@ class RollDice extends Component<
     this.roll = this.roll.bind(this);
   }
 
-  roll() {
+  /**
+   * Resolves with the rolled value once the animation finishes, or undefined
+   * if the roll was blocked (disabled / already mid-roll) -- so a caller that
+   * needs the actual number afterward (e.g. a voice command chaining a move
+   * onto the same roll) can await it directly, instead of only getting the
+   * value via onRoll's fire-and-forget callback.
+   */
+  roll(): Promise<number | undefined> {
     const {
       sides = RollDice.defaultProps.sides ?? [],
       onRoll,
       disabled,
     } = this.props;
-    if (disabled || this.state.rolling) return;
+    if (disabled || this.state.rolling) {
+      return Promise.resolve(undefined);
+    }
     this.setState({ rolling: true });
 
-    setTimeout(() => {
-      const value =
-        sides[Math.floor(Math.random() * sides.length)];
-      this.setState({
-        // Changing state upon click
-        die1: value,
-        rolling: false,
-      });
-      onRoll?.(value);
-    }, 1000);
+    return new Promise(resolve => {
+      setTimeout(() => {
+        const value =
+          sides[Math.floor(Math.random() * sides.length)];
+        this.setState({
+          // Changing state upon click
+          die1: value,
+          rolling: false,
+        });
+        onRoll?.(value);
+        resolve(value);
+      }, 1000);
+    });
   }
 
   render() {
