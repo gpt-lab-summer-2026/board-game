@@ -14,6 +14,10 @@ kokoro models: https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-fi
 
 gemma 3 4b it q4: https://huggingface.co/unsloth/gemma-3-4b-it-GGUF/tree/005e437a164cd0ca77d29d0646c43bc5d29b6134
 
+### Tampereen tuikahdus
+
+React application with python backend. Frontend handles the visual game and the game logic, backend handles the TTS, STT and LLM and connects to frontend with HTTP requests.
+
 ## Supported Languages
 
 ## Running program

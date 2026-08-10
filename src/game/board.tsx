@@ -12,7 +12,7 @@ import {
 import {
   HOME_CITY_IDS,
   SPECIAL_CITIES,
-  CARD_DISPLAY,
+  CARD_BACK_IMAGE,
   type CardKind,
 } from './rules';
 
@@ -287,8 +287,10 @@ function CreateFlightRoutes() {
   return <>{objectArray}</>;
 }
 
-// Placeholder for the cardboard piece sitting on each unclaimed city -
-// swap the <rect>/<text> below for an <image> (gif) per CardKind later.
+// The cardboard piece sitting on each unclaimed city -- always shown face
+// down (CARD_BACK_IMAGE), since what kind of card it is isn't revealed until
+// a player actually claims it. See CARD_IMAGES for the front faces, shown
+// once a card is claimed.
 function CreateCards({
   cards,
 }: {
@@ -298,36 +300,19 @@ function CreateCards({
     ([cityId, kind]) => {
       const space = spaceById[cityId];
       if (!space) return null;
-      const display = CARD_DISPLAY[kind];
       const x = space.x * meta['width'];
       const y = space.y * meta['height'] - 40;
 
       return (
-        <g
+        <image
           key={cityId}
           className={`card-piece card-piece-${kind}`}
-        >
-          <rect
-            x={x - 8}
-            y={y - 8}
-            width='16'
-            height='16'
-            rx='3'
-            fill={display.color}
-            stroke='black'
-          />
-          <text
-            x={x}
-            y={y}
-            textAnchor='middle'
-            fill='black'
-            fontSize='11px'
-            fontFamily='Arial'
-            dy='.3em'
-          >
-            {display.label}
-          </text>
-        </g>
+          href={CARD_BACK_IMAGE}
+          x={x - 12}
+          y={y - 12}
+          width='24'
+          height='24'
+        />
       );
     },
   );

@@ -24,6 +24,7 @@ import {
   createDeck,
   deriveMove,
   CARD_PAYOUT,
+  CARD_IMAGES,
   HOME_CITY_IDS,
   SPECIAL_CITIES,
   type CardKind,
@@ -97,6 +98,10 @@ function App() {
   const [infoMessage, setInfoMessage] = useState<
     string | null
   >(null);
+  // Which card's front face to show alongside infoMessage -- only set once a
+  // card is actually claimed, since the board keeps every unclaimed card face down.
+  const [revealedCard, setRevealedCard] =
+    useState<CardKind | null>(null);
   const [gameState, setGameState] =
     useState<GameState>('notStarted');
 
@@ -263,6 +268,7 @@ function App() {
     );
     setCapetownAwarded(nextCapetownAwarded);
     setInfoMessage(capetownMessage);
+    setRevealedCard(null);
     setLastRoll(null);
     setText('');
     setMoveError(null);
@@ -471,6 +477,7 @@ function App() {
       );
       player = result.player;
       setInfoMessage(result.message);
+      setRevealedCard(kind);
       removeCard(cityId);
     } else if (action === 'wait') {
       player = {
@@ -478,8 +485,10 @@ function App() {
         status: { type: 'waitingForCard', cityId },
       };
       setInfoMessage(null);
+      setRevealedCard(null);
     } else {
       setInfoMessage(null);
+      setRevealedCard(null);
     }
 
     setPlayers(
@@ -534,11 +543,13 @@ function App() {
         ),
       );
       setInfoMessage(result.message);
+      setRevealedCard(kind);
       removeCard(cityId);
     } else {
       setInfoMessage(
         `Rolled ${roll} — not enough to claim the card yet.`,
       );
+      setRevealedCard(null);
     }
     advanceTurn();
   };
@@ -584,7 +595,10 @@ function App() {
     onResolveCard: resolveCard,
     onContinueMove: continueMove,
     onStopMove: stopMove,
-    onUnrecognizedVoiceCommand: setInfoMessage,
+    onUnrecognizedVoiceCommand: (message: string | null) => {
+      setInfoMessage(message);
+      setRevealedCard(null);
+    },
     gameStatsRef,
     rollDiceRef,
   });
@@ -601,6 +615,7 @@ function App() {
     setText('');
     setMoveError(null);
     setInfoMessage(null);
+    setRevealedCard(null);
     setCards({});
     setPendingCard(null);
     setCapetownAwarded(false);
@@ -697,6 +712,13 @@ function App() {
                 {spaceById[currentPlayer.placeId].name}
               </p>
               {infoMessage && <p>{infoMessage}</p>}
+              {revealedCard && (
+                <img
+                  className='revealed-card'
+                  src={CARD_IMAGES[revealedCard]}
+                  alt={`${revealedCard} card`}
+                />
+              )}
 
               {currentPlayer.status?.type ===
                 'captured' && (

@@ -39,6 +39,14 @@
   border-color: #ddd;
 }
 
+.revealed-card {
+  display: block;
+  max-width: 100%;
+  width: 12rem;
+  border-radius: 0.4rem;
+  margin: 0.5rem 0;
+}
+
 /* Always-visible summary of every player -- not just whoever's turn it is. */
 .player-roster {
   list-style: none;
