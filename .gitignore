@@ -1,8 +1,8 @@
 # Vendored/generated assets -- large, fetched separately, never tracked here
-/llama.cpp/
-/models/
-/darknet/
-/voice/models/
+llama.cpp/
+models/
+darknet/
+voice/models/
 *.gguf
 
 # Python
@@ -36,4 +36,4 @@ pnpm-debug.log*
 /gcovr-report/
 /lcov-report/
 
-/voice/recordings
+tampereen-tuikahdus/voice/recordings
