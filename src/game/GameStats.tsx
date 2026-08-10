@@ -79,7 +79,12 @@ function GameStats({
   if (gameState === 'notStarted') {
     return (
       <div className='gaming-stats'>
-        <button onClick={onStartGame}>Start game</button>
+        <button className='big-button' onClick={onStartGame}>
+          Start game
+        </button>
+        <p className='setup-instructions'>
+          Or just say your name -- e.g. "hey jarvis, I'm Alice" -- to join by voice.
+        </p>
       </div>
     );
   }
@@ -112,10 +117,14 @@ function GameStats({
 
     return (
       <div className='gaming-stats'>
-        <p>Choose players:</p>
+        <p className='setup-instructions'>Choose players:</p>
+        <p className='setup-instructions setup-instructions-voice'>
+          Say "player 1, Alice, player 2, Bob" (or one at a time: "I'm
+          Alice"). Once everyone's in, say "hey jarvis, begin".
+        </p>
         <div className='players-input'>
           {names.map((name, index) => (
-            <label key={index}>
+            <label key={index} className='player-input-row'>
               player {index + 1}:{' '}
               <input
                 type='text'
@@ -138,6 +147,7 @@ function GameStats({
         </div>
 
         <button
+          className='big-button'
           disabled={players.length === 0}
           onClick={() => onBeginGame(players)}
         >

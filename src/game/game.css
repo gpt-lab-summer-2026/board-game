@@ -19,9 +19,35 @@
 .players-input {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.player-input-row {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
-  width: 30%;
+  gap: 0.4rem;
+  font-size: 1.1rem;
+  width: 100%;
+}
+
+.player-input-row input[type='text'] {
+  flex: 1 1 6rem;
+  min-width: 0;
+  font-size: 1.1rem;
+  padding: 0.3rem 0.5rem;
+  box-sizing: border-box;
+}
+
+.player-input-row select {
+  flex: 1 1 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .gaming-stats {
@@ -31,4 +57,28 @@
   justify-content: center;
   gap: 1rem;
   height: 100%;
+  padding: 1rem;
+  text-align: center;
+}
+
+.setup-instructions {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+  max-width: 32rem;
+}
+
+.setup-instructions-voice {
+  font-size: 1.05rem;
+  font-weight: 400;
+  font-style: italic;
+  color: #555;
+}
+
+.big-button {
+  font-size: 1.3rem;
+  font-weight: 600;
+  padding: 0.6rem 1.4rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
 }

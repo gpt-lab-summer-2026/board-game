@@ -406,8 +406,16 @@ function App() {
    * Turtola". gemma3 only extracts a heading city and a travel mode; where the
    * piece actually lands is decided here by the same findMoves the typed path
    * uses. Takes ~10s on this machine, hence the pending state and cancel.
+   *
+   * rollOverride is for a voice command that rolled and named a destination in
+   * the same breath ("roll the dice and head for Hakametsä"): useVoiceControl
+   * awaits the roll itself and passes the real value straight through here,
+   * because by the time that await resolves, THIS closure's own `lastRoll` is
+   * whatever it was when this function was handed to the hook -- React hasn't
+   * re-rendered with the new roll yet, so reading the state directly would use
+   * a stale null and reject the move with "roll the dice first".
    */
-  const askClick = async (transcript: string) => {
+  const askClick = async (transcript: string, rollOverride?: number) => {
     if (llmPending) return;
     const controller = new AbortController();
     llmAbort.current = controller;
@@ -420,7 +428,7 @@ function App() {
         transcript,
         currentPlaceId: currentPlayer.placeId,
         money: currentPlayer.money,
-        lastRoll,
+        lastRoll: rollOverride ?? lastRoll,
         uiMode: moveMode,
         signal: controller.signal,
       });
@@ -566,6 +574,7 @@ function App() {
     setGameState,
     currentPlayer,
     llmPending,
+    setLlmPending,
     hasPendingCard: pendingCard !== null,
     hasPendingMove: pendingMove !== null && pendingMove.remainingSteps > 0,
     lastRoll,
@@ -606,8 +615,42 @@ function App() {
         <Board players={players} cards={cards} />
       </div>
       <div className='game-info'>
-        gaming stats
+        <h2 className='game-info-title'>Gaming stats</h2>
         <VoiceIndicator voice={voice} />
+        {players.length > 0 && (
+          <ul className='player-roster'>
+            {players.map((player, index) => (
+              <li
+                key={player.id}
+                className={
+                  'player-roster-row' +
+                  (index === turnIndex && !winner
+                    ? ' player-roster-row-active'
+                    : '')
+                }
+              >
+                <span
+                  className='player-roster-dot'
+                  style={{ backgroundColor: player.pieceColor }}
+                />
+                <span className='player-roster-name'>
+                  {player.name}
+                </span>
+                <span className='player-roster-detail'>
+                  {spaceById[player.placeId]?.name ?? player.placeId}
+                </span>
+                <span className='player-roster-detail'>
+                  {player.money}
+                </span>
+                {player.status && (
+                  <span className='player-roster-status'>
+                    {player.status.type}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
         {!winner && (
           <GameStats
             ref={gameStatsRef}

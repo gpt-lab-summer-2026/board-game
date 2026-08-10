@@ -200,9 +200,11 @@ class WakeWordDetector:
             ) from e
         self._model_name = next(iter(self._model.models))
         self._armed = True  # fires once per rise above threshold, not once per frame while held
+        self.last_score = 0.0  # updated on every process_chunk call -- see test_wakeword.py
 
     def process_chunk(self, chunk: np.ndarray) -> WakeWordEvent | None:
         score = float(self._model.predict(chunk)[self._model_name])
+        self.last_score = score
         detected = score >= self.cfg.threshold
         fire = detected and self._armed
         self._armed = not detected
@@ -293,6 +295,17 @@ class UiServer:
     def _handle_ws(self, client) -> None:
         with self._ws_lock:
             self._ws_clients.add(client)
+            other_clients = len(self._ws_clients) - 1
+        if other_clients > 0:
+            # Each browser tab runs a fully independent copy of the game (no
+            # shared/backend game state at all) -- if more than one is open,
+            # whichever last reports current_player silently overwrites the
+            # other's, with no way to tell from here which one you actually
+            # meant to use. This can't be resolved automatically; it's meant
+            # to make that failure mode loud instead of a silent mystery bug.
+            log.warning("Another %d browser tab(s) already connected -- if you have more "
+                        "than one tab/window open on this app, close the old ones, or "
+                        "they'll fight over whose turn it is.", other_clients)
         try:
             for raw in client:
                 self._handle_ws_message(raw)

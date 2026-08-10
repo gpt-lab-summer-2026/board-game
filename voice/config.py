@@ -11,12 +11,7 @@ class AudioConfig:
     sample_rate: int = 16000       # what openWakeWord and pyannote both expect; audio.resample
                                     # converts every captured chunk down to this before it's used
     channels: int = 1
-    # No device index here (unlike the old sounddevice-based capture): pw-record targets
-    # PipeWire's current default source. Change the input device with `wpctl set-default`
-    # or `pw-record --target`, not through this config.
-    #
-    # check with `ffmpeg -f avfoundation -list_devices true -i ""` and set this to match.
-    mac_input_device: str = "1"
+    mac_input_device: str = "3"
 
 
 @dataclass
@@ -29,21 +24,38 @@ class WakeWordConfig:
 @dataclass
 class SpeakerIdConfig:
     device: str = "cpu"
-    # None = send a cached `hf auth login` token if one exists, but don't require one --
-    # the wespeaker embedding model is a public, ungated repo. Pass a string to force an
-    # explicit token instead (e.g. to dodge anonymous-request rate limits).
     hf_token: object = None
     match_threshold: float = 0.5       # cosine similarity below this = "unrecognized voice"
 
 
 @dataclass
 class SttConfig:
-    model: str = "distil-small.en"  # faster-whisper arch name
+    # distil-small.en (the previous default) is English-ONLY -- distil-whisper has no
+    # multilingual variant at all, so it had zero chance of transcribing the board's
+    # Finnish place names correctly, no matter how it was prompted. "small" is the
+    # smallest *multilingual* whisper size; if it's too slow on the Pi, "base" is the
+    # next multilingual step down, still far better than an English-only model here.
+    model: str = "small"  # faster-whisper arch name
     device: str = "cpu"
     compute_type: str = "int8"      # int8 keeps this usable on a Pi's CPU
+    # Commands are framed in English ("heading for X", "roll the dice") with a Finnish
+    # place name embedded, not whole sentences in Finnish -- forcing language="fi" would
+    # instead mangle the English framing. initial_prompt below is the real lever for the
+    # embedded Finnish proper nouns: it biases the model's vocabulary without changing
+    # which language it decodes in.
     language: str = "en"
-    # Vocabulary bias for whisper -- e.g. the board's Finnish place names, which an
-    # English-only model wouldn't otherwise favor. A mitigation, not a fix: it won't
-    # always land on an unfamiliar name exactly. Exact resolution now happens on the
-    # React side (src/llm/names.ts) against the real board.
-    initial_prompt: str | None = None
+
+    # The board's actual place names (src/game/board2.json), so the model has SOME prior
+    # on what a Finnish place name said mid-sentence should sound like, instead of forcing
+    # it to fall back on English phonetics for words it's never going to get exactly right
+    # anyway. A mitigation, not a fix -- exact resolution still happens against the real
+    # board in src/llm/names.ts's matchCityName, which this exists to feed better input to.
+    initial_prompt: str | None = (
+        "Places on the board: Annala, Finlayson, Hakametsä, Hervannan vesitorni, "
+        "Iidesjärvi, Kalevan kirkko, Kalevan prisma, Kapina, Kaukajärvi, Kauppi, "
+        "Keskustori, Koskipuisto, Laukontori, Makkarajärvi, Mini autokauppa helvetti, "
+        "Perensaari, Rantaperkiö, Ratina, Rautatieasema, Sorsapuisto, Suolijärvi, "
+        "Tammelan tori, Tammerkoski, Tampere talo, Tulli, Turtola, Vapriikki, "
+        "Viikinsaari, Wäinölät, Yliopisto Hervannan kampus, Yliopisto keskusta kampus, "
+        "arboretum."
+    )

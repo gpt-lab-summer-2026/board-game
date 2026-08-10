@@ -17,6 +17,10 @@ function describe({ connected, voiceStatus }: VoiceControlStatus): string {
         : 'recording...';
     case 'transcribing':
       return 'transcribing...';
+    case 'listening_for_followup':
+      return voiceStatus.player
+        ? `still listening to ${voiceStatus.player} -- no need to say "hey jarvis" again yet`
+        : 'still listening...';
   }
 }
 

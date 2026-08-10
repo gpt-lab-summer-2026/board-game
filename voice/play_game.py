@@ -1,12 +1,12 @@
+
 """
 Usage:
-    python -m voice.play_game
+    python3 -m voice.play_game
 """
 from __future__ import annotations
 
 import argparse
 import logging
-import re
 import time
 from collections import deque
 
@@ -20,37 +20,19 @@ from .listen import (
     wait_for_wake_word,
 )
 
-ID_BUFFER_SECONDS = 2.0 
+ID_BUFFER_SECONDS = 2.0
 NAME_SECONDS = 8.0
+# See test_turn_gate.py's identical constant for why 6s.
 COMMAND_SECONDS = 6.0
-
-_NAME_FILLERS = ("hey jarvis", "hey jarviss", "my name is", "i'm ", "im ", "this is", "it's ")
-_BEGIN_RE = re.compile(r"\b(start|begin)\b", re.IGNORECASE)
-_PLAYER_NUMBER = r"\d+|one|two|three|four|five|six|seven|eight|nine|ten"
-_PLAYER_LIST_RE = re.compile(
-    rf"player\s*(?:number\s*)?(?:{_PLAYER_NUMBER})\s*[:,\-]?\s*([a-z][a-z'\-]*)",
-    re.IGNORECASE,
-)
-
-def clean_name(spoken: str) -> str:
-    #'hey jarvis, I'm Alice' -> 'Alice'
-    text = spoken.strip()
-    lowered = text.lower()
-    for filler in _NAME_FILLERS:
-        idx = lowered.find(filler)
-        if idx != -1:
-            text = text[idx + len(filler):]
-            lowered = text.lower()
-    cleaned = text.strip(" .,!?'\"").title()
-    return cleaned or "Player"
-
-
-def parse_player_list(spoken: str) -> list[str]:
-    # 'player 1: Alice, player 2, Bob' -> ['Alice', 'Bob']
-    return [m.group(1).strip().title() for m in _PLAYER_LIST_RE.finditer(spoken)]
+# How many follow-up commands a turn accepts without repeating the wake word --
+# e.g. "hey jarvis, roll the dice" then, unprompted, "move to Hakametsä". Capped
+# rather than unlimited so a player who's fallen quiet for good eventually goes
+# back to needing the wake word, instead of the mic silently listening forever.
+MAX_FOLLOWUPS = 2
 
 
 def run_setup(capture, detector, transcriber, ui, rolling) -> None:
+
     print('Listening for players, say player and number and your name -- '
           'for example, "player 1, Alice, player 2, Bob" (or just "I\'m Alice" one at a '
           'time). Once everyone has, say "hey jarvis, begin".')
@@ -67,28 +49,22 @@ def run_setup(capture, detector, transcriber, ui, rolling) -> None:
         print(f"[setup] recorded {len(follow_up)} samples, transcribing...")
         ui.broadcast_status("transcribing")
         spoken = transcriber.transcribe(follow_up)
-        print(f"[setup] heard: {spoken!r}")
-
-        if _BEGIN_RE.search(spoken):
-            print("[setup] that's a start/begin phrase -- relaying it for the browser to act on")
-            ui.broadcast_transcript("", spoken, phase="setup", event="player_spoke")
-            continue
-
-        player_names = parse_player_list(spoken)
-        if player_names:
-            print(f"[setup] heard a player list: {player_names}")
-        else:
-            # Doesn't look like "player N: Name" at all -- treat the whole utterance
-            # as one person introducing themselves, same as before this list syntax existed.
-            player_names = [clean_name(spoken)]
-            print(f"[setup] treating this as a single new player: {player_names[0]!r}")
-
-        for player_name in player_names:
-            ui.broadcast_transcript(player_name, spoken, phase="setup", event="player_joined")
+        print(f"[setup] heard: {spoken!r} -- relaying to the browser to interpret")
+        ui.broadcast_transcript("", spoken, phase="setup")
     print(f"[setup] done -- browser reports current player is {ui.get_current_player()!r}")
 
 
 def run_game(capture, detector, transcriber, ui, rolling) -> None:
+    """Most turns are two utterances -- "roll the dice", then once the number's
+    known, "move to X" -- and repeating the wake word for both was exactly the
+    friction players complained about. So after a wake-worded command, this
+    stays in a short follow-up window (see MAX_FOLLOWUPS) that keeps listening
+    without it, and only falls back to requiring the wake word again once a
+    follow-up comes back empty, the turn changes, or the cap is used up.
+
+    This doesn't turn the mic fully always-on: outside that brief post-command
+    window, the wake word is still required, same as before.
+    """
     print("[game] started. Listening for turns.")
     last_logged_expected = None
     while True:
@@ -108,16 +84,32 @@ def run_game(capture, detector, transcriber, ui, rolling) -> None:
         # No speaker-ID: whoever just said the wake word is trusted to be `expected`,
         # since that's who the browser says is up.
         print(f"[game] wake word detected -- trusting it's {expected!r} (no speaker-ID)")
-        ui.set_message(f"Listening to {expected}...")
-        ui.broadcast_status("recording", player=expected)
 
-        print(f"[game] recording command for {COMMAND_SECONDS:.0f}s...")
-        command_audio = capture.record_seconds(COMMAND_SECONDS)
-        print(f"[game] recorded {len(command_audio)} samples, transcribing...")
-        ui.broadcast_status("transcribing", player=expected)
-        transcript = transcriber.transcribe(command_audio)
-        print(f"[game] {expected} said: {transcript!r}")
-        ui.broadcast_transcript(expected, transcript, phase="playing")
+        followups_left = MAX_FOLLOWUPS
+        while True:
+            ui.set_message(f"Listening to {expected}...")
+            ui.broadcast_status("recording", player=expected)
+            print(f"[game] recording command for {COMMAND_SECONDS:.0f}s...")
+            command_audio = capture.record_seconds(COMMAND_SECONDS)
+            print(f"[game] recorded {len(command_audio)} samples, transcribing...")
+            ui.broadcast_status("transcribing", player=expected)
+            transcript = transcriber.transcribe(command_audio)
+            print(f"[game] {expected} said: {transcript!r}")
+            ui.broadcast_transcript(expected, transcript, phase="playing")
+
+            if not transcript.strip():
+                print("[game] heard nothing further -- back to requiring the wake word")
+                break
+            followups_left -= 1
+            if followups_left <= 0:
+                print("[game] follow-up limit reached -- back to requiring the wake word")
+                break
+            if ui.get_current_player() != expected:
+                print("[game] turn changed -- back to requiring the wake word")
+                break
+            print(f"[game] listening for a follow-up ({followups_left} left) -- "
+                  f"no wake word needed...")
+            ui.broadcast_status("listening_for_followup", player=expected)
         print("[game] broadcasted to browser, waiting for its next current_player update...")
 
 

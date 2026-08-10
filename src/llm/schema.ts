@@ -63,3 +63,42 @@ export function buildIntentSchema(cityIds: readonly string[]) {
     },
   };
 }
+
+/**
+ * For every narrow-menu voice interaction (pay/wait/skip at a card, continue
+ * during a capture/enslavement, continue/stop after declining a card en
+ * route, ...): a fixed, small set of valid actions for the *current* state,
+ * plus 'unclear'. One schema shape reused everywhere instead of a bespoke one
+ * per state -- see src/voice/action.ts.
+ */
+export function buildActionSchema(validActions: readonly string[]) {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['action'],
+    properties: {
+      action: { type: 'string', enum: [...validActions, 'unclear'] },
+    },
+  };
+}
+
+export const SETUP_KINDS = ['begin', 'names', 'unclear'] as const;
+export type SetupKind = (typeof SETUP_KINDS)[number];
+
+/**
+ * Setup-phase classification: is this utterance the "let's begin" cue, or one
+ * or more players introducing themselves? Free-text names can't be enumerated
+ * up front the way cities/actions are, so `names` stays an open string array
+ * rather than an enum -- see src/llm/setup.ts.
+ */
+export function buildSetupSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['kind'],
+    properties: {
+      kind: { type: 'string', enum: [...SETUP_KINDS] },
+      names: { type: 'array', items: { type: 'string' } },
+    },
+  };
+}

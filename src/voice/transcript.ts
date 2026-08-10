@@ -22,21 +22,23 @@
 // actually their moment to talk, not just the eventual result.
 
 export type VoiceTranscript = {
+  /** Empty during setup -- play_game.py no longer decides who's introducing
+   * themselves vs. saying "begin" (see resolveSetupIntent, which now makes
+   * that call from `text` alone). Always set during play. */
   player: string;
   text: string;
   /** Which phase of play_game.py's loop this came from. Absent means
    * "playing" -- older/simpler senders (e.g. test_turn_gate.py) don't set it. */
   phase?: 'setup' | 'playing';
-  /** Only set when phase is 'setup': whether `player` is a name play_game.py
-   * just enrolled from an unrecognized voice, or an already-enrolled voice
-   * speaking again (e.g. to say "begin"). */
-  event?: 'player_joined' | 'player_spoke';
 };
 
 export type VoiceStatusKind =
   | 'waiting_for_wake_word'
   | 'recording'
-  | 'transcribing';
+  | 'transcribing'
+  /** A follow-up window after a command -- play_game.py is listening again
+   * without requiring the wake word, up to a small cap (see MAX_FOLLOWUPS). */
+  | 'listening_for_followup';
 
 export type VoiceStatus = {
   status: VoiceStatusKind;
