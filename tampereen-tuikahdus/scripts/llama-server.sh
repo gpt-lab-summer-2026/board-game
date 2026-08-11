@@ -16,7 +16,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 exec llama-server \
-  -m models/gemma-3-4b-it-q4_k_m.gguf \
+  -m ../models/gemma-3-4b-it-q4_k_m.gguf \
   --host 127.0.0.1 --port 8091 \
   -c 4096 -t 4 -tb 4 -np 1 \
   --swa-full \

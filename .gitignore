@@ -10,6 +10,7 @@ __pycache__/
 *.pyc
 .venv/
 game-venv/
+dnd-venv/
 
 # Node
 node_modules/
@@ -37,3 +38,5 @@ pnpm-debug.log*
 /lcov-report/
 
 tampereen-tuikahdus/voice/recordings
+
+*.wav
