@@ -48,5 +48,5 @@ def transcribe(audio, target_rate=16000):
     print(f"Transcription: {text}")
 
 #print(sd.query_devices())
-record_audio()
-transcribe(audio=AUDIO_DATA)
+#record_audio()
+#transcribe(audio=AUDIO_DATA)
