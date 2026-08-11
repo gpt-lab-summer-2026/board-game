@@ -35,12 +35,12 @@ def transcribe(audio, target_rate=16000):
     audio16k = np.interp(old_idx, np.arange(len(audio_float32)), audio_float32)
     audio16k_int16 = (audio16k * 32767).astype(np.int16)
 
-    write("recordings/rec.wav", target_rate, audio16k_int16) # numpy to wav
+    write("recordings/listen.wav", target_rate, audio16k_int16) # numpy to wav
 
     # transcribe
     print("transcribing")
     segments, _ = MODEL.transcribe(
-        "recordings/rec.wav",
+        "recordings/listen.wav",
         condition_on_previous_text=False,
         temperature=0.0,
     )
