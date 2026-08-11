@@ -2,10 +2,11 @@ import sounddevice as sd
 from scipy.io.wavfile import write
 import numpy as np
 from faster_whisper import WhisperModel
+from streaming_tts import TextToAudioStream, KokoroEngine
 
 MODEL = WhisperModel("small", device="cpu", compute_type="int8")
 
-AUDIO_DEVICE = 1
+AUDIO_DEVICE = 1 # check correct device
 FS = 48000
 REC_PATH = "recordings/rec.wav"
 DURATION = 5
@@ -45,8 +46,23 @@ def transcribe(audio, target_rate=16000):
         temperature=0.0,
     )
     text = "".join(segment.text for segment in segments).strip().rstrip(".!?,;:")
-    print(f"Transcription: {text}")
+    return text
 
-#print(sd.query_devices())
-#record_audio()
-#transcribe(audio=AUDIO_DATA)
+def listen_user():
+    record_audio()
+    return transcribe(audio=AUDIO_DATA)
+
+def speak(text):
+    # Initialize the engine
+    engine = KokoroEngine(voice="bf_lily")
+        
+    # Create stream and play
+    stream = TextToAudioStream(engine)
+    stream.feed(text).play()
+    
+    # Process text with pauses
+    # for item in process_text_with_pauses(text, normalize=True):
+    #     if isinstance(item, float):
+    #         time.sleep(item)  # Pause
+    #     else:
+    #         stream.feed(item).play()  # Speak
