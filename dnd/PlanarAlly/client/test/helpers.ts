@@ -1,0 +1,64 @@
+import type { ApiFloor, PlayerInfoCore } from "../src/apiTypes";
+import { toGP } from "../src/core/geometry";
+import type { LocalId } from "../src/core/id";
+import { addServerFloor } from "../src/game/floor/server";
+import { generateLocalId } from "../src/game/id";
+import type { IShape } from "../src/game/interfaces/shape";
+import { LayerName } from "../src/game/models/floor";
+import { Role } from "../src/game/models/role";
+import { Rect } from "../src/game/shapes/variants/rect";
+import { floorSystem } from "../src/game/systems/floors";
+import type { PlayerId } from "../src/game/systems/players/models";
+
+export async function generateTestShape(options?: { floor?: string }): Promise<IShape> {
+    const rect = new Rect(toGP(0, 0), 0, 0);
+    if (options?.floor !== undefined) {
+        let floor = floorSystem.getFloor({ name: options.floor });
+        if (floor === undefined) {
+            await addServerFloor(generateTestFloor(options.floor));
+            floor = floorSystem.getFloor({ name: options.floor })!;
+        }
+        rect.setLayer(floor.id, LayerName.Tokens);
+    }
+    rect.invalidate = () => {};
+    return rect;
+}
+
+export async function generateTestLocalId(shape?: IShape): Promise<LocalId> {
+    shape ??= await generateTestShape();
+    if (shape.id !== undefined) return shape.id;
+    const id = generateLocalId(shape);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    (shape as any).id = id;
+    return id;
+}
+
+export function generatePlayer(name: string): PlayerInfoCore {
+    return {
+        id: (100 * Math.random()) as PlayerId,
+        name,
+        location: 1,
+        role: Role.Player,
+    };
+}
+
+function generateTestFloor(name?: string): ApiFloor {
+    return {
+        name: name ?? "test floor",
+        player_visible: false,
+        type_: 1,
+        background_color: null,
+        layers: [
+            {
+                groups: [],
+                index: 0,
+                name: "test" as LayerName,
+                player_editable: false,
+                selectable: true,
+                shapes: [],
+                type_: "tokens",
+            },
+        ],
+        index: 0,
+    };
+}

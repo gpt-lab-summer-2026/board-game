@@ -1,0 +1,1 @@
+import{createElementBlock as e,defineComponent as t,openBlock as n,withModifiers as r}from"vue";var i=[`checked`],a=t({__name:`ToggleFormat`,props:{element:{}},setup(t){return(a,o)=>(n(),e(`input`,{type:`checkbox`,checked:t.element.value,onClick:o[0]||=r(()=>{},[`stop`])},null,8,i))}});export{a as default};

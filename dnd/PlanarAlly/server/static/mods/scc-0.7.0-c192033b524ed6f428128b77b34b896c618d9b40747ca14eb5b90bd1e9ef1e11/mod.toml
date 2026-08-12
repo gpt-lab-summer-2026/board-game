@@ -1,0 +1,29 @@
+[mod]
+apiSchema = "0.1.0"
+tag = "scc"
+name = "Simple Character Sheet"
+version = "0.7.0"
+author = "PlanarAlly"
+shortDescription = "A character editor for PlanarAlly"
+
+description = """
+Adds a Character tab to shapes marked as characters: abilities, race,
+background, class, equipped weapons, derived melee and ranged attacks, hit
+points, armour class and a description, plus the token's own name, size and
+flags.
+
+Creatures are supported alongside adventurers: a Beast class and natural
+weapons (claws, bite, hooves) for characters that carry no gear.
+
+Cantrips follow the ranged weapon rules -- an attack roll against AC, damage
+that scales with level, and disadvantage while a hostile creature is within
+5 feet. Attack rows carry ready-made advantage and disadvantage notation.
+
+HP and AC are mirrored onto real PlanarAlly trackers, so they render on the
+token and can be changed from outside the sheet.
+
+Weapons, races, backgrounds and classes come from a campaign-wide catalogue that
+can be edited at runtime. A sheet can also be saved as a named preset and loaded
+onto any other character; unlike PA's shape templates, presets are not tied to
+the asset they were made from.
+"""

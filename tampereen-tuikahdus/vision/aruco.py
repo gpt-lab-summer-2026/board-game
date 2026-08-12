@@ -74,11 +74,23 @@ class Marker:
         )
 
 
-def _detector(dictionary_name: str) -> cv2.aruco.ArucoDetector:
+def _detector(
+    dictionary_name: str, small: bool = False
+) -> cv2.aruco.ArucoDetector:
     dictionary = cv2.aruco.getPredefinedDictionary(
         getattr(cv2.aruco, dictionary_name)
     )
     params = cv2.aruco.DetectorParameters()
+    if small:
+        # For tags near the decode limit. Measured: tags ~32px across on the
+        # projected board decoded 0/4 with defaults and 4/4 with these plus
+        # upscaling. The perimeter floor is what excludes a small tag outright;
+        # the error-correction and border slack cover the cells the projector
+        # tints as it paints the board image over them.
+        params.minMarkerPerimeterRate = 0.005
+        params.polygonalApproxAccuracyRate = 0.1
+        params.maxErroneousBitsInBorderRate = 0.5
+        params.errorCorrectionRate = 1.0
     # Corner refinement costs a little time and buys sub-pixel corners, which is
     # what makes a position stable enough to map onto a board square.
     params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
@@ -93,15 +105,33 @@ def _detector(dictionary_name: str) -> cv2.aruco.ArucoDetector:
 
 
 def detect(
-    frame: np.ndarray, dictionary_name: str = DEFAULT_DICTIONARY
+    frame: np.ndarray,
+    dictionary_name: str = DEFAULT_DICTIONARY,
+    upscale: int = 1,
 ) -> list[Marker]:
-    """Markers found in `frame` under one dictionary."""
+    """Markers found in `frame` under one dictionary.
+
+    `upscale` interpolates the image before detecting and maps the corners back
+    afterwards, so callers still get coordinates in the original frame. Tags
+    only ~30px across sit right at the decode limit and go from 0/4 to 4/4 at
+    upscale=3 -- interpolation invents no detail, but it does give the corner
+    fitter sub-pixel room to work in. Costs roughly the square of the factor.
+    """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    corners, ids, _rejected = _detector(dictionary_name).detectMarkers(gray)
+    if upscale > 1:
+        gray = cv2.resize(
+            gray, None, fx=upscale, fy=upscale, interpolation=cv2.INTER_CUBIC
+        )
+    corners, ids, _rejected = _detector(
+        dictionary_name, small=upscale > 1
+    ).detectMarkers(gray)
     if ids is None:
         return []
     return [
-        Marker(id=int(marker_id), corners=corner_set.reshape(4, 2))
+        Marker(
+            id=int(marker_id),
+            corners=corner_set.reshape(4, 2) / upscale,
+        )
         for marker_id, corner_set in zip(ids.flatten(), corners)
     ]
 

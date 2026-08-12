@@ -1,0 +1,23 @@
+#scc[data-v-0d950e0c] {
+  padding: 1rem;
+  background-color: white;
+  height: -webkit-fill-available;
+  display: grid;
+  grid-template-columns: auto 1fr 1rem;
+  column-gap: 1rem;
+  row-gap: 0.3rem;
+  align-items: center;
+}
+#scc #gap[data-v-0d950e0c] {
+  min-height: 0.5rem;
+  grid-column: 1/-1;
+}
+#scc .row[data-v-0d950e0c] {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+#scc .disabled[data-v-0d950e0c] {
+  opacity: 0.35;
+  cursor: default;
+}

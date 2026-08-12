@@ -1,0 +1,417 @@
+<script setup lang="ts">
+import { computed, onMounted, useTemplateRef } from "vue";
+import { useI18n } from "vue-i18n";
+
+import { assetSystem } from "../../../assets";
+import type { AssetEntryId } from "../../../assets/models";
+import { socket } from "../../../assets/socket";
+import { assetState } from "../../../assets/state";
+import AssetListCore from "../../../assets/ui/AssetListCore.vue";
+import AssetListCoreActions from "../../../assets/ui/AssetListCoreActions.vue";
+import AssetSearchCore from "../../../assets/ui/AssetSearchCore.vue";
+import AssetUploadProgress from "../../../assets/ui/AssetUploadProgress.vue";
+import { assetGameSystem } from "../../systems/assets";
+import { assetGameState } from "../../systems/assets/state";
+import { closeAssetManager } from "../../systems/assets/ui";
+
+const { t } = useI18n();
+
+const searchCore = useTemplateRef<InstanceType<typeof AssetSearchCore>>("searchCore");
+
+// Only claim "no results" once the search has actually run. The previous
+// condition was `results.length === 0 && filter.length > 0`, which fired on the
+// first keystroke and told the user to type at least three characters while
+// they were in the middle of doing exactly that.
+const MIN_SEARCH_LENGTH = 3;
+const noResults = computed(() => {
+    const search = searchCore.value?.search;
+    if (search === undefined) return false;
+    return search.filter.value.length >= MIN_SEARCH_LENGTH && search.results.value.length === 0;
+});
+
+async function load(): Promise<void> {
+    await assetSystem.loadFolder(assetState.currentFolder.value);
+}
+
+onMounted(async () => {
+    if (socket.connected) {
+        await load();
+    } else {
+        socket.connect();
+        socket.once("connect", load);
+    }
+});
+
+const shortcuts = computed(() => {
+    const root = {
+        name: t("assets.all_assets"),
+        id: assetState.reactive.root,
+    };
+    const _shortcuts = assetGameState.reactive.shortcuts.map((id) => {
+        const asset = assetState.reactive.entryIdMap.get(id);
+        return { name: asset?.name ?? "Unknown", id };
+    });
+    return [root, ..._shortcuts];
+});
+
+const activeShortcut = computed(() => assetState.currentFolder.value);
+
+async function open(id: AssetEntryId | undefined): Promise<void> {
+    const target = id ?? assetState.reactive.root;
+    if (target) await assetSystem.changeDirectory(target);
+}
+
+// Drag state is a reactive flag rather than direct DOM writes.
+//
+// This used to reach out with `document.getElementById("layers")` and assign to
+// `.style`, and to poke `display` onto the footer through a template ref. Both
+// fought Vue: any re-render of those nodes would drop the inline styles, and
+// nothing else in the app could tell a drag was in progress.
+//
+// It also used to call `closeAssetManager()` the moment a drag left the panel,
+// which is why placing twenty trees meant opening the browser twenty times.
+// That was a workaround for the panel covering the middle of the board -- the
+// dock mode below removes the reason for it, so the panel now stays put.
+function onDragStart(): void {
+    assetGameSystem.setDraggingToBoard(true);
+}
+
+function onDragEnd(): void {
+    assetGameSystem.setDraggingToBoard(false);
+}
+
+const contextAsset = computed(() => {
+    if (assetState.reactive.selected.length !== 1) return undefined;
+    if (assetState.raw.selected[0] === undefined) return undefined;
+    return assetState.reactive.entryIdMap.get(assetState.raw.selected[0]);
+});
+
+const canShortcut = computed(() => {
+    if (assetState.reactive.selected.length !== 1) return false;
+    if (contextAsset.value === undefined) return false;
+    if (assetGameState.reactive.shortcuts.includes(contextAsset.value.id)) return false;
+    return contextAsset.value.asset === null;
+});
+
+const canRemoveShortcut = computed(() => {
+    if (assetState.reactive.selected.length !== 1) return false;
+    if (contextAsset.value === undefined) return false;
+    return assetGameState.reactive.shortcuts.includes(contextAsset.value.id);
+});
+
+function addToShortcuts(): boolean {
+    if (contextAsset.value === undefined) return false;
+    assetGameSystem.addShortcut(contextAsset.value.id);
+    return true;
+}
+
+function removeFromShortcuts(): boolean {
+    if (contextAsset.value === undefined) return false;
+    assetGameSystem.removeShortcut(contextAsset.value.id);
+    return true;
+}
+
+const extraContextSections = computed(() => {
+    return [
+        {
+            title: t("assets.add_shortcut"),
+            action: addToShortcuts,
+            disabled: !canShortcut.value,
+        },
+        {
+            title: t("assets.remove_shortcut"),
+            action: removeFromShortcuts,
+            disabled: !canRemoveShortcut.value,
+        },
+    ];
+});
+
+const canPick = computed(() => {
+    const selection = assetState.reactive.selected[0];
+    if (selection === undefined) return false;
+    return (
+        assetState.reactive.selected.length === 1 &&
+        assetGameState.reactive.picker !== null &&
+        assetState.reactive.entryIdMap.get(selection)?.asset !== null
+    );
+});
+
+function pickAsset(): void {
+    assetGameState.raw.picker?.(assetState.raw.selected[0]!);
+    closeAssetManager();
+}
+</script>
+
+<template>
+    <header>
+        <div>ASSETS</div>
+        <AssetListCoreActions />
+    </header>
+    <AssetSearchCore ref="searchCore" />
+    <div id="assets-dialog-body" style="display: flex; overflow: hidden">
+        <div v-if="searchCore?.search.loading.value === true" id="assets-loading">
+            <div class="loader"></div>
+            <div>Fetching data...</div>
+        </div>
+        <div v-else-if="noResults" id="assets-loading">
+            <div>No results found for "{{ searchCore?.search.filter.value }}".</div>
+        </div>
+        <template v-else>
+            <section id="assets-shortcuts">
+                <div
+                    v-for="shortcut of shortcuts"
+                    :key="shortcut.id"
+                    :class="{ active: activeShortcut === shortcut.id }"
+                    @click="open(shortcut.id)"
+                >
+                    {{ shortcut.name }}
+                </div>
+            </section>
+
+            <AssetListCore
+                font-size="8em"
+                :search-results="searchCore?.search.results.value ?? []"
+                :extra-context-sections="extraContextSections"
+                @on-drag-end="onDragEnd"
+                @on-drag-start="onDragStart"
+            />
+
+            <div v-if="assetGameState.reactive.picker !== null" id="asset-picker" class="asset-footer">
+                <button @click="closeAssetManager">Cancel</button>
+                <button :disabled="!canPick" @click="pickAsset">Pick</button>
+            </div>
+
+            <div class="asset-footer">
+                <AssetUploadProgress />
+            </div>
+
+            <!--
+                Only shown while a drag is in flight, and only when the panel is
+                still floating over the board. Docked, dragging onto the map is
+                self-evident and a permanent instruction banner is just noise.
+            -->
+            <div
+                v-if="assetGameState.reactive.draggingToBoard && !assetGameState.reactive.managerDocked"
+                id="drag-info-helper"
+                class="asset-footer"
+            >
+                <font-awesome-icon icon="map-location-dot" />
+                Drop outside this panel to place it on the map
+            </div>
+        </template>
+    </div>
+</template>
+
+<style scoped lang="scss">
+header {
+    position: relative;
+    display: flex;
+    height: 2.5em;
+
+    border-bottom: solid 1px black;
+
+    > :first-child {
+        flex-grow: 1;
+        margin-right: 1rem;
+        font-weight: bold;
+        font-size: 1.75em;
+    }
+
+    :deep(img) {
+        filter: brightness(0) saturate(100%);
+        height: 100%;
+    }
+}
+
+#assets-search {
+    margin: 1rem 0;
+    position: relative;
+
+    > div {
+        position: relative;
+        display: flex;
+        align-items: center;
+        height: 2.7rem;
+        border: solid 2px black;
+        border-radius: 1rem;
+
+        > #kind-selector {
+            flex-shrink: 0;
+            height: calc(100% + 4px); // 2px border on top and bottom
+            margin-left: -2px; // 2px border on left
+            border-radius: 1rem;
+            border: solid 2px black;
+            outline: none;
+            text-transform: capitalize;
+            font-size: 1.25em;
+            text-align-last: center;
+            padding: 0 0.5em;
+            background-color: rgba(238, 244, 255, 1);
+            > option {
+                background-color: rgba(245, 245, 245, 1);
+            }
+        }
+
+        > svg:first-of-type {
+            margin-left: 1rem;
+        }
+
+        > .shape-name {
+            flex-shrink: 0;
+            margin-left: 0.5rem;
+            font-weight: bold;
+
+            &:hover {
+                text-decoration: line-through;
+                cursor: pointer;
+            }
+        }
+
+        > #search-field {
+            flex-grow: 1;
+            flex-shrink: 1;
+
+            outline: none;
+            border: none;
+            border-radius: 1rem;
+
+            display: flex;
+            align-items: center;
+            width: 100%;
+
+            > input {
+                padding: 0.5rem 1rem;
+                outline: none;
+                border: none;
+                border-radius: 1rem;
+                flex-grow: 1;
+
+                font-size: 1.25em;
+            }
+            > #clear-button {
+                border: 0;
+                font-size: 1rem;
+                cursor: pointer;
+                margin-right: 1rem;
+            }
+        }
+        > #search-options-icon {
+            margin: 0 1rem;
+        }
+
+        #search-options-close-icon {
+            position: absolute;
+            right: 1rem;
+            top: 0.7rem;
+        }
+
+        #search-filter {
+            z-index: 1;
+            position: absolute;
+            top: -2px;
+            right: -2px;
+
+            display: grid;
+            grid-template-columns: repeat(2, auto);
+            gap: 0.5rem;
+
+            padding: 1rem;
+            padding-top: 2rem;
+            border: solid 2px black;
+            border-radius: 1rem;
+
+            background-color: white;
+
+            label {
+                display: inline-block;
+            }
+        }
+    }
+}
+
+#assets-shortcuts {
+    width: 7.5rem;
+    margin-right: 1rem;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+
+    > div {
+        width: 100%;
+        text-align: center;
+        padding: 0.5rem 0;
+
+        &.active {
+            background-color: var(--pa-text-muted);
+            color: white;
+        }
+
+        &:hover {
+            background-color: var(--pa-text-muted);
+            color: white;
+            cursor: pointer;
+        }
+    }
+}
+
+.asset-footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 1rem;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5em;
+    gap: 1rem;
+}
+
+#drag-info-helper {
+    // Visibility is v-if now; `display: none` here would hide it permanently.
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: var(--pa-drop-highlight);
+}
+
+#assets-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.loader {
+    display: inline-block;
+    width: 2rem;
+    height: 2rem;
+
+    border: 5px solid var(--pa-danger);
+    border-bottom-color: transparent;
+    border-radius: 50%;
+
+    animation: rotation 1s linear infinite;
+}
+
+@keyframes rotation {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+#asset-picker {
+    display: flex;
+    justify-content: flex-end;
+    z-index: 1; // otherwise the footer overlaps the bottom half of the buttons
+
+    button {
+        height: 2rem;
+        width: 10rem;
+        border-radius: 0.5rem;
+    }
+}
+</style>

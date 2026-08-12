@@ -1,0 +1,41 @@
+<script setup lang="ts">
+import type { Section } from "./types";
+
+const emit = defineEmits<(e: "cm:close") => void>();
+defineProps<{ sections: readonly Section[]; addDivider?: boolean }>();
+
+async function doAction(action: () => boolean | Promise<boolean>): Promise<void> {
+    const result = await action();
+    if (result) {
+        emit("cm:close");
+    }
+}
+</script>
+
+<template>
+    <template v-for="(section, i) in sections" :key="Array.isArray(section) ? i : section.title">
+        <template v-if="Array.isArray(section)">
+            <ContextMenuSection
+                v-if="section.length"
+                :sections="section"
+                :add-divider="i < sections.length - 1"
+                @cm:close="$emit('cm:close')"
+            />
+        </template>
+        <template v-else-if="'subitems' in section">
+            <li v-if="section.subitems.length">
+                {{ section.title }}
+                <font-awesome-icon icon="angle-right" />
+                <ul>
+                    <ContextMenuSection :sections="section.subitems" @cm:close="$emit('cm:close')" />
+                </ul>
+            </li>
+        </template>
+        <template v-else>
+            <li :class="{ selected: section.selected }" @click.stop="doAction(section.action)">
+                <span>{{ section.title }}</span>
+            </li>
+        </template>
+    </template>
+    <li v-if="addDivider" class="divider"></li>
+</template>

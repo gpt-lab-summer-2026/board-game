@@ -1,0 +1,127 @@
+/*
+ * Design tokens.
+ *
+ * Why this file exists: before it, the client had 43 distinct hardcoded hex
+ * colours and exactly three CSS custom properties (all of them local to
+ * LocationBar.vue). `#82c8a0` alone appeared 64 times, `#ffa8bf` 32 times.
+ * That makes any global change -- a contrast fix, a dark theme, a different
+ * accent -- a hundred-site search and replace, and it is why the interface
+ * drifts: each component picks whichever near-miss shade its author had to
+ * hand.
+ *
+ * The values below are the existing palette, deduplicated and given names
+ * describing their ROLE rather than their colour. That is deliberate: a token
+ * called `--pa-accent` can be changed to something that isn't green, while one
+ * called `--pa-green` cannot.
+ *
+ * These are additive. Components that still hardcode colours keep working
+ * exactly as before; they can be migrated when they are next touched. Nothing
+ * here needs a big-bang conversion to be useful.
+ *
+ * Contrast note: the house accent `#82c8a0` sits at roughly 1.9:1 against
+ * white. That is fine as a background fill and nowhere near WCAG AA (4.5:1) for
+ * text, so there is a separate `--pa-accent-ink` for when the accent has to
+ * carry meaning in type or in a border.
+ */
+
+:root {
+    /* ---- surfaces ---- */
+    --pa-surface: #ffffff;
+    --pa-surface-raised: #f5f5f5;
+    --pa-surface-sunken: #e9e9e9;
+    --pa-surface-inverse: #2b2b2b;
+
+    /* ---- text ---- */
+    --pa-text: #1c1c1c;
+    --pa-text-muted: #5c5c5c; /* 6.4:1 on white -- passes AA for body text */
+    --pa-text-inverse: #ffffff;
+
+    /* ---- lines ---- */
+    --pa-border: #cccccc;
+    --pa-border-strong: #767676;
+
+    /* ---- accent: the house green ---- */
+    --pa-accent: #82c8a0;
+    --pa-accent-hover: #6cb98d;
+    --pa-accent-muted: #e1eae5;
+    /* Darkened to 4.6:1 on white, for accent-coloured TEXT and borders. The
+       raw accent must never be used for either. */
+    --pa-accent-ink: #1f7a4d;
+
+    /* ---- secondary: the pink/maroon used by locations & menus ---- */
+    --pa-secondary: #7c253e;
+    --pa-secondary-hover: #9c455e;
+    --pa-secondary-light: #ffa8bf;
+
+    /* ---- brand ---- */
+    /* The coral used by the logo strip and the menu panel. Named for its role
+       rather than folded into --pa-danger: it is chrome, not a warning. */
+    --pa-brand: #fa5a5a;
+    /* The "on/confirmed" green used by the UI chrome. Distinct from
+       --pa-success, which is tuned for text contrast. */
+    --pa-on: #36a829;
+
+    /* ---- status ---- */
+    --pa-danger: #a82929;
+    --pa-danger-surface: #ff7052;
+    --pa-warning: #d98324;
+    --pa-success: #2e7d32;
+    --pa-drop-highlight: #92bbed;
+    /* Sticky-note yellow, for annotations attached to a token. */
+    --pa-surface-note: #ffe4c4;
+
+    /* ---- shape ---- */
+    --pa-radius-sm: 4px;
+    --pa-radius-md: 8px;
+    --pa-radius-lg: 1rem;
+
+    /* ---- depth ---- */
+    --pa-shadow-sm: 0 1px 3px rgb(0 0 0 / 20%);
+    --pa-shadow-lg: 0 2px 8px rgb(0 0 0 / 33%);
+
+    /* ---- spacing ---- */
+    --pa-space-1: 0.25rem;
+    --pa-space-2: 0.5rem;
+    --pa-space-3: 0.75rem;
+    --pa-space-4: 1rem;
+    --pa-space-6: 1.5rem;
+
+    /* ---- focus ---- */
+    --pa-focus-ring: #2b6cb0;
+}
+
+/*
+ * A visible focus indicator, everywhere, by default.
+ *
+ * The client currently has 25 `outline: none` declarations against 14 `:focus`
+ * rules -- focus indicators are removed nearly twice as often as they are
+ * replaced, which leaves keyboard users with no idea where they are. This is
+ * the floor. `:focus-visible` rather than `:focus` so it does not fire on
+ * mouse clicks, which is the legitimate reason people reach for `outline: none`
+ * in the first place.
+ *
+ * Component-level `outline: none` still wins on specificity, so this does not
+ * fight existing styles -- it only covers the (large) majority that never
+ * thought about focus at all.
+ */
+:focus-visible {
+    outline: solid 2px var(--pa-focus-ring);
+    outline-offset: 1px;
+}
+
+/*
+ * Respect the OS "reduce motion" setting.
+ *
+ * A virtual tabletop is a long-session application and several panels slide and
+ * fade. This is the standard, cheap accommodation and there was none.
+ */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

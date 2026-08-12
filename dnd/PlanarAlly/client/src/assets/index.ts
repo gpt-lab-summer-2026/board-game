@@ -1,0 +1,311 @@
+import { useToast } from "vue-toastification";
+
+import type { ApiAssetCore, ApiAssetEntry, ApiAssetUpload } from "../apiTypes";
+import { registerSystem } from "../core/systems";
+import type { System, SystemClearReason } from "../core/systems/models";
+import { callbackProvider, uuidv4 } from "../core/utils";
+import { router } from "../router";
+
+import {
+    sendAssetRemove,
+    sendAssetRename,
+    getFolder,
+    sendInodeMove,
+    getFolderPath,
+    getFolderByPath,
+    getAsset,
+} from "./emits";
+import type { AssetEntryId, AssetId } from "./models";
+import { socket } from "./socket";
+import { assetState } from "./state";
+// oxlint-disable-next-line import/no-unassigned-import
+import "./events";
+
+const toast = useToast();
+
+const { raw, mutableReactive: $ } = assetState;
+
+/** Same as server `assetmgmt_upload` naming: AssetEntry name is filename without final extension. */
+function entryNameFromUploadFilename(uploadName: string): string {
+    const parts = uploadName.split(".");
+    if (parts.length > 1) {
+        return parts.slice(0, -1).join(".");
+    }
+    return uploadName;
+}
+
+class AssetSystem implements System {
+    rootCallback = callbackProvider();
+
+    clearLocal(): void {
+        $.folders = [];
+        $.files = [];
+        $.loadingFolder = false;
+    }
+
+    clear(reason: SystemClearReason): void {
+        if (reason === "logging-out") {
+            this.clearLocal();
+            $.entryIdMap.clear();
+            $.folderPath = [];
+        }
+    }
+
+    clearFolderPath(): void {
+        $.folderPath = [];
+    }
+
+    setRoot(root: AssetEntryId): void {
+        $.root = root;
+        this.rootCallback.resolveAll();
+    }
+
+    setPath(path: AssetEntryId[]): void {
+        $.folderPath = [];
+        let assetPath = router.currentRoute.value.path.slice("/assets/".length);
+        if (assetPath.at(-1) === "/") assetPath = assetPath.slice(0, -1);
+        if (assetPath.length === 0) return;
+
+        for (const [index, part] of assetPath.split("/").entries()) {
+            const pathId = path[index];
+            if (pathId === undefined) {
+                console.error("Incorrect PathIndex encountered.");
+                continue;
+            }
+            $.folderPath.push({ id: pathId, name: part });
+        }
+    }
+
+    moveInode(inode: AssetEntryId, targetFolder: AssetEntryId): void {
+        let targetData = $.folders;
+        if (raw.files.includes(inode)) targetData = $.files;
+        targetData.splice(targetData.indexOf(inode), 1);
+        sendInodeMove({ inode, target: targetFolder });
+    }
+
+    async changeDirectory(targetFolder: AssetEntryId | "POP"): Promise<void> {
+        $.loadingFolder = true;
+        if (targetFolder === "POP") {
+            $.folderPath.pop();
+        } else if (targetFolder === raw.root) {
+            $.folderPath = [];
+        } else if (raw.folderPath.some((fp) => fp.id === targetFolder)) {
+            while (assetState.currentFolder.value !== targetFolder) $.folderPath.pop();
+        } else {
+            const asset = raw.entryIdMap.get(targetFolder);
+            if (asset !== undefined) {
+                if (raw.root && ($.entryIdMap.get(raw.root)?.children?.some((c) => c.id === targetFolder) ?? false)) {
+                    $.folderPath = [{ id: targetFolder, name: asset.name }];
+                } else {
+                    const path = await getFolderPath(targetFolder);
+                    $.folderPath = path.slice(1);
+                }
+            }
+        }
+        this.clearSelected();
+        await this.loadFolder(assetState.currentFolder.value);
+    }
+
+    async loadFolder(folder: AssetEntryId | string | undefined): Promise<void> {
+        if (folder === undefined) return;
+
+        const data = typeof folder === "string" ? await getFolderByPath(folder) : await getFolder(folder);
+        this.clearLocal();
+        this.setFolderData(data.folder.id, data.folder);
+        if (data.path) assetSystem.setPath(data.path);
+        assetState.mutableReactive.sharedParent = data.sharedParent;
+        assetState.mutableReactive.sharedRight = data.sharedRight;
+    }
+
+    setFolderData(folder: AssetEntryId, data: ApiAssetEntry): void {
+        $.entryIdMap.set(folder, data);
+        if (data.children) {
+            for (const child of data.children) {
+                this.resolveUpload(child.name);
+                this.addAsset(child);
+            }
+        }
+        $.loadingFolder = false;
+    }
+
+    async getAssetInfo(id: AssetId): Promise<ApiAssetCore | undefined> {
+        const asset = $.assetIdMap.get(id);
+        if (asset) return asset;
+        const serverData = await getAsset(id);
+        if (!serverData) return undefined;
+        $.assetIdMap.set(id, serverData);
+        return serverData;
+    }
+
+    // SELECTED
+
+    addSelectedInode(inode: AssetEntryId): void {
+        $.selected.push(inode);
+    }
+
+    clearSelected(): void {
+        $.selected = [];
+    }
+
+    removeSelection(): void {
+        for (const sel of raw.selected) {
+            // todo: change this to a single event containing all assetIds
+            sendAssetRemove(sel);
+            this.removeAsset(sel);
+        }
+        assetSystem.clearSelected();
+    }
+
+    // ASSET
+
+    addAsset(entry: ApiAssetEntry, parent?: AssetEntryId): void {
+        if (parent !== undefined && parent !== assetState.currentFolder.value) return;
+
+        $.entryIdMap.set(entry.id, entry);
+        let _target: "folders" | "files" = "folders";
+        if (entry.asset !== null) {
+            _target = "files";
+        }
+        const target = $[_target];
+        target.push(entry.id);
+
+        const sorted_target = target
+            .map((i) => raw.entryIdMap.get(i))
+            .filter((a) => a !== undefined)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((a) => a.id);
+
+        $[_target] = sorted_target;
+    }
+
+    renameAsset(id: AssetEntryId, name: string): void {
+        sendAssetRename({
+            asset: id,
+            name,
+        });
+        $.entryIdMap.get(id)!.name = name;
+    }
+
+    removeAsset(asset: AssetEntryId): void {
+        let target = $.folders;
+        if ($.files.includes(asset)) target = $.files;
+        target.splice(target.indexOf(asset), 1);
+        $.entryIdMap.delete(asset);
+    }
+
+    // NETWORK
+
+    resolveUpload(file: string): void {
+        const idx = raw.pendingUploads.findIndex((f) => f === file);
+        if (idx >= 0) {
+            $.pendingUploads.splice(idx, 1);
+            $.resolvedUploads++;
+            if (raw.expectedUploads <= raw.resolvedUploads) {
+                $.expectedUploads = 0;
+                $.resolvedUploads = 0;
+            }
+        }
+    }
+
+    async upload(
+        fls: FileList,
+        // target is a function, because if the socket is closed, none of the usual targets exist yet
+        options?: { target?: () => AssetEntryId | undefined; newDirectories?: string[] },
+    ): Promise<ApiAssetEntry[]> {
+        const closeSocket = socket.disconnected;
+        if (closeSocket) {
+            socket.connect();
+            await assetSystem.rootCallback.wait();
+        }
+
+        const limit = (await socket.emitWithAck("Asset.Upload.Limit")) as {
+            single: number;
+            total: number;
+            used: number;
+        };
+
+        // First check limits
+        let totalSize = 0;
+        for (const file of fls) {
+            totalSize += file.size;
+            if (limit.single > 0 && file.size > limit.single) {
+                toast.error(
+                    `File ${file.name} is too large. Max size is ${limit.single} bytes. Contact the server admin if you need to upload larger files.`,
+                    { timeout: 0 },
+                );
+                return [];
+            }
+            if (limit.total > 0 && totalSize > limit.total - limit.used) {
+                const remaining = Math.max(0, limit.total - limit.used);
+                toast.error(
+                    `Total size of files is too large. You have ${remaining} bytes remaining and attempted to upload ${totalSize} bytes. Contact the server admin if you need to upload larger files.`,
+                    { timeout: 0 },
+                );
+                return [];
+            }
+        }
+
+        const target = options?.target?.() ?? assetState.currentFolder.value;
+        if (target === undefined) throw new Error("Upload target was not found. CurrentFolder is undefined?");
+
+        const newDirectories = options?.newDirectories ?? [];
+
+        $.expectedUploads += fls.length;
+
+        const uploadedFiles = [];
+
+        const CHUNK_SIZE = 100000;
+        for (const file of fls) {
+            const uuid = uuidv4();
+            const slices = Math.ceil(file.size / CHUNK_SIZE);
+            $.pendingUploads.push(entryNameFromUploadFilename(file.name));
+            for (let slice = 0; slice < slices; slice++) {
+                // oxlint-disable-next-line no-await-in-loop
+                const uploadedFile = await new Promise<ApiAssetEntry | undefined>((resolve) => {
+                    const fr = new FileReader();
+                    fr.readAsArrayBuffer(
+                        file.slice(
+                            slice * CHUNK_SIZE,
+                            slice * CHUNK_SIZE + Math.min(CHUNK_SIZE, file.size - slice * CHUNK_SIZE),
+                        ),
+                    );
+                    fr.addEventListener("load", (_e) => {
+                        if (fr.result === null) return;
+
+                        const uploadData: ApiAssetUpload = {
+                            name: file.name,
+                            directory: target,
+                            newDirectories,
+                            // todo: At server this is typed as `bytes`
+                            // but openapi makes it `string`
+                            // in reality it's an ArrayBuffer, but that's fine for the bytes type
+                            data: fr.result as string,
+                            slice,
+                            totalSlices: slices,
+                            uuid,
+                        };
+                        socket.emit("Asset.Upload", uploadData, resolve);
+                    });
+                });
+                // The returned data is undefined, if the file has multiple slices
+                // only the last slice will return a valid file
+                if (uploadedFile !== undefined) uploadedFiles.push(uploadedFile);
+            }
+        }
+        if (closeSocket) socket.disconnect();
+
+        return uploadedFiles;
+    }
+
+    // SHARES
+
+    addShare(asset: AssetEntryId, user: string, right: "view" | "edit"): void {
+        const data = $.entryIdMap.get(asset);
+        if (data === undefined) return console.error("Unknown asset was provided");
+        data.shares.push({ user, right });
+    }
+}
+export const assetSystem = new AssetSystem();
+// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+(window as any).assetSystem = assetSystem;
+registerSystem("asset", assetSystem, false, assetState);

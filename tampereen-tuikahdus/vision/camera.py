@@ -76,6 +76,17 @@ class Camera:
             raise RuntimeError("camera read failed (device unplugged?)")
         return frame
 
+    def reopen(self) -> None:
+        """Drop the handle and acquire the device again.
+
+        This camera re-enumerates in practice -- it has moved between USB ports
+        mid-session, which invalidates the open handle and makes every
+        subsequent read fail. A long-running loop should try this before giving
+        up rather than dying on a transient.
+        """
+        self.close()
+        self.open()
+
     def close(self) -> None:
         if self._cap is not None:
             self._cap.release()

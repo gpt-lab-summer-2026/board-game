@@ -1,0 +1,395 @@
+"""A headless PlanarAlly client -- the "ghost player" the voice pipeline drives.
+
+Connects the same way a browser does, because PlanarAlly has no separate
+machine API: log in over HTTP for a session cookie, then open a socket.io
+connection on the /planarally namespace carrying that cookie. The server
+requires the account to already have a PlayerRoom row for the room, or it
+silently refuses the connection (see server/src/api/socket/connection.py).
+
+Everything the game sends arrives as socket events; the interesting ones for
+perceiving a board are Board.Set (the whole initial state) and the Shape.*
+family (incremental changes).
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+from dataclasses import dataclass, field
+from typing import Any
+from urllib.parse import quote
+
+from yarl import URL
+
+import aiohttp
+import socketio
+
+log = logging.getLogger(__name__)
+
+GAME_NAMESPACE = "/planarally"
+
+
+@dataclass
+class GhostConfig:
+    base_url: str = "http://127.0.0.1:8000"
+    username: str = "ghost"
+    password: str = ""
+    # The room's creator and name, exactly as they appear in the game URL
+    # /game/<creator>/<room>. The socket handshake matches on both.
+    room_creator: str = "sampo"
+    room_name: str = "sanpo"
+    # Refuse to emit anything that would change the session. Worth keeping on
+    # until the intent parser has been watched for a while: a bad parse
+    # otherwise becomes a visible change in someone's live game.
+    dry_run: bool = False
+
+
+@dataclass
+class BoardState:
+    """What the ghost currently believes is on the board."""
+
+    locations: dict[int, str] = field(default_factory=dict)
+    floors: list[dict[str, Any]] = field(default_factory=list)
+    shapes: dict[str, dict[str, Any]] = field(default_factory=dict)
+    """shape uuid -> layer name."""
+    shape_layer: dict[str, str] = field(default_factory=dict)
+    """shape uuid -> floor name. Needed to know what a floor removal would
+    strand; see scene.remove_floor."""
+    shape_floor: dict[str, str] = field(default_factory=dict)
+    players: dict[int, str] = field(default_factory=dict)
+    """character name -> shape uuid. What lets a voice command name a target."""
+    characters: dict[str, str] = field(default_factory=dict)
+    """character name -> character id, which is what Character.Remove wants
+    (shape uuid and character id are different keys)."""
+    character_ids: dict[str, int] = field(default_factory=dict)
+    """Grid geometry, needed to reason about movement in cells rather than pixels."""
+    grid_type: str = "SQUARE"
+    """How many feet one cell represents."""
+    unit_size: float = 5.0
+    """Shapes the DM has explicitly marked as dangerous terrain."""
+    hazard_uuids: set[str] = field(default_factory=set)
+    """Name of the floor the ghost is looking at. Shape.Add addresses floors
+    and layers by name, not id, and silently drops an unknown pair."""
+    current_floor: str | None = None
+
+    def find_shape(self, name: str) -> str | None:
+        """Resolve a spoken name to a shape uuid.
+
+        Case-insensitive, and falls back to a unique substring match -- speech
+        recognition rarely returns the exact capitalisation a DM typed, and
+        "hamta" should find "big hamta". An ambiguous prefix returns None
+        rather than guessing, because acting on the wrong token is worse than
+        asking again.
+        """
+        wanted = name.strip().lower()
+        for char_name, uuid in self.characters.items():
+            if char_name.lower() == wanted:
+                return uuid
+        matches = [u for n, u in self.characters.items() if wanted in n.lower()]
+        return matches[0] if len(matches) == 1 else None
+
+    def summary(self) -> str:
+        by_layer: dict[str, int] = {}
+        for layer in self.shape_layer.values():
+            by_layer[layer] = by_layer.get(layer, 0) + 1
+        layers = ", ".join(f"{k}={v}" for k, v in sorted(by_layer.items())) or "none"
+        return (
+            f"{len(self.shapes)} shape(s) across {len(self.floors)} floor(s) "
+            f"[{layers}]"
+        )
+
+
+class GhostClient:
+    def __init__(self, cfg: GhostConfig):
+        self.cfg = cfg
+        self.state = BoardState()
+        self.sio = socketio.AsyncClient(logger=False, engineio_logger=False)
+        self._session: aiohttp.ClientSession | None = None
+        self._connected = asyncio.Event()
+        self._board_ready = asyncio.Event()
+        self._grid_known = False
+        self._register_handlers()
+
+    # ---- connection ---------------------------------------------------------
+
+    async def login(self) -> None:
+        """Authenticate and keep the session cookie for the socket handshake."""
+        # unsafe=True is required, not optional: aiohttp's default cookie jar
+        # silently discards cookies from IP-literal hosts such as 127.0.0.1, so
+        # the session cookie never gets stored and the socket handshake arrives
+        # unauthenticated -- which PlanarAlly answers with a `redirect` to / and
+        # no further events, looking exactly like a protocol mismatch.
+        session = aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar(unsafe=True))
+        try:
+            async with session.post(
+                f"{self.cfg.base_url}/api/login",
+                json={"username": self.cfg.username, "password": self.cfg.password},
+            ) as resp:
+                if resp.status != 200:
+                    raise RuntimeError(
+                        f"login failed ({resp.status}): {await resp.text()}"
+                    )
+        except BaseException:
+            # Don't leak the connector on a failed login. Without this, a bad
+            # password produces the real error plus two "Unclosed client
+            # session" tracebacks from the GC, which bury it.
+            await session.close()
+            raise
+
+        self._session = session
+        log.info("logged in as %s", self.cfg.username)
+
+    async def session(self) -> aiohttp.ClientSession:
+        """The logged-in HTTP session, for the parts of PA that aren't sockets
+        (mod and asset uploads). Logs in on first use."""
+        if self._session is None:
+            await self.login()
+        assert self._session is not None
+        return self._session
+
+    async def connect(self) -> None:
+        if self._session is None:
+            await self.login()
+        cookies = self._session.cookie_jar.filter_cookies(
+            URL(self.cfg.base_url)
+        )
+        # coded_value, not value: the session cookie is quoted and base64-ish,
+        # and stripping the quotes makes the server reject it.
+        cookie_header = "; ".join(
+            f"{k}={v.coded_value}" for k, v in cookies.items()
+        )
+        if not cookie_header:
+            raise RuntimeError(
+                "no session cookie after login -- the socket would connect "
+                "unauthenticated and receive only a redirect"
+            )
+
+        # The server reads user/room off the query string and matches them
+        # against the Room table; unquote happens after the & split server-side,
+        # so names containing & would break -- quote each value separately.
+        query = (
+            f"user={quote(self.cfg.room_creator, safe='')}"
+            f"&room={quote(self.cfg.room_name, safe='')}"
+        )
+        await self.sio.connect(
+            f"{self.cfg.base_url}?{query}",
+            namespaces=[GAME_NAMESPACE],
+            headers={"Cookie": cookie_header},
+            transports=["websocket"],
+        )
+        await asyncio.wait_for(self._connected.wait(), timeout=10)
+
+    async def load_board(self, timeout: float = 30) -> BoardState:
+        """Ask for the board and wait until it has all arrived.
+
+        Nothing is sent on connect alone -- the client has to request it. The
+        server answers with Board.Locations.Set, one Board.Floor.Set per floor,
+        Location.Set, and finally Location.Loaded, which is the only reliable
+        signal that the whole board has been delivered.
+        """
+        self._board_ready.clear()
+        self._grid_known = False
+        self.reset_board_state()
+        await self.sio.emit("Location.Load", namespace=GAME_NAMESPACE)
+        await asyncio.wait_for(self._board_ready.wait(), timeout=timeout)
+
+        # Falling back to a square 5ft grid on a hex board is wrong in a way
+        # nothing downstream can detect -- every distance, movement budget and
+        # ruler is quietly off. Say so rather than carrying on silently.
+        if not self._grid_known:
+            log.warning(
+                "no grid settings received; assuming %s at %sft per cell. "
+                "Distances may be wrong.", self.state.grid_type, self.state.unit_size
+            )
+        return self.state
+
+    def reset_board_state(self) -> None:
+        """Drop the perceived board.
+
+        Any caller that emits Location.Load must do this first: the server
+        replays every floor, and Board.Floor.Set appends, so a second load
+        without a reset leaves the ghost believing in twice as many floors.
+        """
+        self.state.floors.clear()
+        self.state.shapes.clear()
+        self.state.shape_layer.clear()
+        self.state.shape_floor.clear()
+        self.state.characters.clear()
+        self.state.character_ids.clear()
+        self.state.current_floor = None
+
+    async def close(self) -> None:
+        if self.sio.connected:
+            await self.sio.disconnect()
+        if self._session is not None:
+            await self._session.close()
+
+    # ---- receiving ----------------------------------------------------------
+
+    def _register_handlers(self) -> None:
+        ns = GAME_NAMESPACE
+
+        @self.sio.event(namespace=ns)
+        async def connect():  # noqa: D401 - socket.io callback name is fixed
+            log.info("socket connected to %s", ns)
+            self._connected.set()
+
+        @self.sio.event(namespace=ns)
+        async def disconnect():
+            log.info("socket disconnected")
+            self._connected.clear()
+
+        @self.sio.on("Board.Locations.Set", namespace=ns)
+        async def locations_set(data):
+            for loc in data or []:
+                if isinstance(loc, dict) and "id" in loc:
+                    self.state.locations[loc["id"]] = loc.get("name", "?")
+
+        @self.sio.on("Board.Floor.Set", namespace=ns)
+        async def floor_set(data):
+            # One of these per floor. Each carries its layers, each layer its
+            # shapes -- this is the bulk of what the ghost perceives.
+            self.state.floors.append(data)
+            if self.state.current_floor is None:
+                self.state.current_floor = data.get("name")
+            for layer in data.get("layers", []):
+                for shape in layer.get("shapes", []):
+                    uuid = shape.get("uuid")
+                    if uuid:
+                        self.state.shapes[uuid] = shape
+                        self.state.shape_layer[uuid] = layer.get("name", "?")
+                        self.state.shape_floor[uuid] = data.get("name", "?")
+
+        @self.sio.on("Locations.Settings.Set", namespace=ns)
+        async def location_settings(data):
+            # Carries the active location's options, including grid type and
+            # how many feet a cell is worth. Without these the ghost would have
+            # to assume a 5ft square grid and would be a cell out on the hex
+            # board this table actually uses.
+            # Shape is {default: {...}, active: <location id>, locations: {id: {...}}}.
+            # `active` is an *id*, not an options object -- treating it as one
+            # raised "'int' object is not a mapping" and left the ghost on its
+            # square/5ft defaults against a hex board at 7ft.
+            options: dict[str, Any] = {}
+            if isinstance(data, dict):
+                options = dict(data.get("default") or {})
+                active = data.get("active")
+                locations = data.get("locations") or {}
+                # Keys are ints server-side and strings once JSON-encoded.
+                overrides = locations.get(str(active)) or locations.get(active)
+                if isinstance(overrides, dict):
+                    # Per-location options are *optional overrides*: None means
+                    # "inherit the room default". A plain dict.update() treats
+                    # those Nones as values and wipes the defaults -- which
+                    # silently reverted the ghost to a square 5ft grid on a hex
+                    # board, and every distance with it.
+                    options.update({k: v for k, v in overrides.items() if v is not None})
+
+            grid = options.get("grid_type")
+            unit = options.get("unit_size")
+            if grid:
+                self.state.grid_type = str(grid)
+            if unit:
+                self.state.unit_size = float(unit)
+            self._grid_known = bool(grid and unit)
+            log.info("grid: %s at %s per cell", self.state.grid_type, self.state.unit_size)
+
+        @self.sio.on("Characters.Set", namespace=ns)
+        async def characters_set(data):
+            # Sent once per full location load, and the only place names are
+            # attached to shapes -- Board.Floor.Set carries uuids only.
+            entries = [c for c in data or [] if "name" in c and "shapeId" in c]
+            self.state.characters = {c["name"]: c["shapeId"] for c in entries}
+            self.state.character_ids = {c["name"]: c["id"] for c in entries if "id" in c}
+            log.info("characters: %s", ", ".join(sorted(self.state.characters)) or "none")
+
+        @self.sio.on("Location.Loaded", namespace=ns)
+        async def location_loaded(_data=None):
+            log.info("board received: %s", self.state.summary())
+            self._board_ready.set()
+
+        @self.sio.on("Shape.Add", namespace=ns)
+        async def shape_add(data):
+            shape = data.get("shape", data)
+            uuid = shape.get("uuid")
+            if uuid:
+                self.state.shapes[uuid] = shape
+                self.state.shape_layer[uuid] = data.get("layer", "?")
+                log.info("shape added: %s", uuid)
+
+        @self.sio.on("Shape.Remove", namespace=ns)
+        async def shape_remove(data):
+            uuid = data if isinstance(data, str) else data.get("uuid")
+            self.state.shapes.pop(uuid, None)
+            self.state.shape_layer.pop(uuid, None)
+            log.info("shape removed: %s", uuid)
+
+        @self.sio.on("Shape.Position.Update", namespace=ns)
+        async def shape_moved(data):
+            uuid = data.get("uuid")
+            if uuid in self.state.shapes:
+                self.state.shapes[uuid].update(
+                    {"x": data.get("x"), "y": data.get("y")}
+                )
+                log.info("shape moved: %s -> (%s,%s)", uuid, data.get("x"), data.get("y"))
+
+        @self.sio.on("*", namespace=ns)
+        async def catch_all(event, data=None):
+            # Deliberately noisy at DEBUG: the protocol is large and mostly
+            # undocumented, so seeing the real event names is how we learn it.
+            log.debug("event %s: %r", event, data)
+
+    # ---- acting -------------------------------------------------------------
+
+    async def emit(self, event: str, data: Any) -> None:
+        """Send an event, unless running dry."""
+        if self.cfg.dry_run:
+            log.warning("[dry-run] would emit %s: %r", event, data)
+            return
+        await self.sio.emit(event, data, namespace=GAME_NAMESPACE)
+        log.info("emitted %s", event)
+
+    async def roll_dice(
+        self,
+        notation: str = "1d20",
+        share_with: str = "all",
+        as_player: str | None = None,
+    ) -> "DiceRoll":
+        """Roll dice and announce the result to the session.
+
+        The roll happens here, not on the server -- PlanarAlly only relays the
+        outcome. share_with is "all", "dm" or "none"; "none" means the server
+        forwards it to nobody, which makes it useless from a headless client
+        since we have no UI of our own to show it in.
+
+        `as_player` attributes the roll to someone else, which is the point of a
+        voice-driven table: a player says "roll me a d20" and the result should
+        appear under *their* name, not the ghost's. The server does no checking
+        here -- it copies `player` straight through to everyone (see
+        api/socket/dice.py) -- so this works, but it also means dice results in
+        PlanarAlly are only as trustworthy as the client that sent them. Fine
+        for a co-operative table; worth knowing before relying on it.
+        """
+        from .dice import roll as roll_notation
+
+        result = roll_notation(notation)
+        attributed_to = as_player or self.cfg.username
+        await self.emit(
+            "Dice.Roll.Result",
+            result.to_payload(attributed_to, share_with),
+        )
+        log.info(
+            "rolled %s for %s -> %s %s",
+            result.notation, attributed_to, result.total, result.long_result(),
+        )
+        return result
+
+    async def move_shape(self, uuid: str, x: float, y: float) -> None:
+        """Move a token. Coordinates are PlanarAlly world units, not pixels."""
+        shape = self.state.shapes.get(uuid)
+        if shape is None:
+            raise KeyError(f"unknown shape {uuid}")
+        await self.emit(
+            "Shape.Position.Update",
+            {"uuid": uuid, "x": x, "y": y, "temporary": False},
+        )
+        shape.update({"x": x, "y": y})

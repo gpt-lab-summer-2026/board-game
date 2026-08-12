@@ -1,0 +1,866 @@
+{
+    "locale": {
+        "select": "Select Language:",
+        "en": "English",
+        "zh": "简体中文",
+        "tw": "繁體中文",
+        "de": "Deutsch",
+        "ru": "Русский",
+        "dk": "Dansk",
+        "es": "Español",
+        "it": "Italiano",
+        "fr": "Français"
+    },
+    "assetManager": {
+        "AssetContextMenu": {
+            "new_name": "New name:",
+            "renaming_NAME": "Renaming {name}",
+            "ask_remove": "Are you sure you wish to remove this?"
+        },
+        "AssetManager": {
+            "new_folder_name": "New folder name",
+            "uploading": "Uploading files",
+            "create_folder": "Create folder",
+            "upload_files": "Upload files",
+            "title": "Asset manager",
+            "download_files": "Download files"
+        }
+    },
+    "common": {
+        "rename": "Rename",
+        "remove": "Remove",
+        "username": "Username",
+        "password": "Password",
+        "server_ver_prefix": "Server version:",
+        "PlanarAlly": "PlanarAlly",
+        "error_prefix": "Error:",
+        "error_msg": "Error!",
+        "close": "Close",
+        "submit": "Submit",
+        "create": "Create",
+        "warning": "Warning",
+        "value": "Value",
+        "toggle_public_private": "Toggle public / private",
+        "toggle_draw": "Draw on token",
+        "initiative": "Initiative",
+        "search": "Search",
+        "name": "Name",
+        "add": "Add",
+        "players": "Players",
+        "exit": "Exit",
+        "assets": "Assets",
+        "notes": "Notes",
+        "markers": "Markers",
+        "border_color": "Border colour",
+        "fill_color": "Fill colour",
+        "fill_color_short": "Fill",
+        "stroke_color_short": "Stroke",
+        "trackers": "Trackers",
+        "auras": "Auras",
+        "annotation": "Annotation",
+        "floor": "Floor",
+        "layer": "Layer",
+        "location": "Location",
+        "admin": "Admin",
+        "grid": "Grid",
+        "vision": "Vision",
+        "tokens": "Tokens",
+        "shape": "Shape",
+        "colour": "Colour",
+        "colours": "Colours",
+        "version": "version",
+        "confirm": "Confirm",
+        "cancel": "Cancel",
+        "insert_one_character": "Please insert at least one character",
+        "name_already_in_use": "This name is already in use!",
+        "varia": "Varia",
+        "select": "Select",
+        "or": "or",
+        "features": "Features",
+        "you": "you",
+        "all": "all",
+        "stroke_color": "Stroke colour",
+        "stroke_width": "Stroke width",
+        "public": "Public",
+        "primary_color": "Primary Colour",
+        "secondary_color": "Secondary Colour",
+        "range": "Range",
+        "aura": "Aura",
+        "enabled": "Enabled",
+        "toggle": "Toggle",
+        "permission": "Permissions",
+        "movement": "Movement",
+        "both": "Both",
+        "actions": "Actions",
+        "upload": "Upload",
+        "apply": "Apply",
+        "type": "Type",
+        "background": "Background",
+        "mods": "Mods",
+        "ok": "Ok",
+        "link": "Link"
+    },
+    "errors": {
+        "shape-order-mismatch": "An inconsistency in the shape order was detected on the server. This has been automatically corrected. Please refresh the page to ensure you're seeing the correct order."
+    },
+    "assets": {
+        "add_shortcut": "Add shortcut",
+        "all_assets": "All Assets",
+        "remove_shortcut": "Remove shortcut"
+    },
+    "auth": {
+        "login": {
+            "register": "Register",
+            "login": "Login",
+            "forgotPassword": "Forgot password?",
+            "forgotPasswordNote1": "Note that password recovery by mail is only possible if you configured an email-address for your account.",
+            "forgotPasswordNote2": "If you did not do this, or are not sure, please contact the administrator of this server.",
+            "forgotPasswordSuccess": "Email sent",
+            "resetPassword": "Reset password",
+            "resetPasswordSuccess": "Password reset",
+            "resetPasswordFailed": "Failed to reset password - Token incorrect or expired",
+            "resetPasswordNote": "Enter your new password below and click submit to reset your password.",
+            "title": "LOG INTO PLANARALLY"
+        }
+    },
+    "core": {
+        "components": {
+            "InputCopyElement": {
+                "copied": "Copied!",
+                "copy": "Copy"
+            },
+            "selectionbox": {
+                "non_empty_warning": "Enter a non-empty custom value!",
+                "already_exists_warning": "That choice already exists!"
+            }
+        }
+    },
+    "dashboard": {
+        "Dashboard": {
+            "session_name": "Campaign Name",
+            "account_settings": "Account Settings",
+            "logout": "Logout",
+            "your_sessions": "Your campaigns",
+            "no_sessions": "No active campaigns",
+            "create_session": "Create a campaign",
+            "create_new_session": "Create a new campaign"
+        },
+        "settings": {
+            "email_changed": "Email changed successfully"
+        }
+    },
+    "game": {
+        "ui": {
+            "FloorSelect": {
+                "new_name": "New floor name",
+                "creation": "Floor Creation",
+                "warning_msg_Z": "Are you sure you wish to remove the {z} floor?",
+                "delete_floor": "Delete floor",
+                "add_new_floor": "Add new floor",
+                "toggle_visibility": "Toggle floor visibility for players",
+                "rename_icon_hover": "Rename this floor",
+                "rename_header_title": "Renaming Floor",
+                "title": "Floor selection"
+            },
+            "initiative": {
+                "new_effect": "New effect",
+                "add_effect": "Add effect",
+                "add_timed_effect": "Add timed effect",
+                "toggle_group": "Toggle individual / group initiative",
+                "delete_init": "Delete initiative",
+                "delete_effect": "Delete effect",
+                "round_N": "Round {n}",
+                "vision_log_msg": "Auto lock vision (only show vision of active token)",
+                "camera_log_msg": "Auto camera lock on active token",
+                "reset_round": "Reset rounds/turns",
+                "next": "Next",
+                "previous": "Previous",
+                "next_round": "Next round",
+                "previous_round": "Previous round",
+                "clear": "Clear initiatives",
+                "clear_entries": "Clear entries",
+                "change_sort": "Change sorting",
+                "settings": "Settings",
+                "remove_group_msg": "Are you sure you wish to remove this group from the initiative order?",
+                "clear_entries_msg": "Are you sure you wish to clear all initiative entries?",
+                "clear_initiatives_msg": "Are you sure you wish to clear all initiative numbers?",
+                "empty_initiative": "No visible entries",
+                "infinite_toggle_hint": "Should the effect have infinite duration?",
+                "end_turn_toggle_hint": "Update at end of turn",
+                "start_turn_toggle_hint": "Update at start of turn",
+                "effect_duration_hint": "Number of rounds this effect will last",
+                "effect_name_hint": "Name of the effect"
+            },
+            "menu": {
+                "LocationBar": {
+                    "new_location_name": "New location name:",
+                    "create_new_location": "Create new location",
+                    "add_new_location": "Add new location",
+                    "show_specific_pl": "Show specific players"
+                },
+                "MenuBar": {
+                    "characters": "Characters",
+                    "new_note": "New note",
+                    "open_asset_manager": "Open asset manager",
+                    "no_assets": "No assets",
+                    "create_note": "Create note",
+                    "delete_marker": "Delete marker",
+                    "no_notes": "No notes",
+                    "dm_settings": "DM Settings",
+                    "no_markers": "No markers",
+                    "client_settings": "Client Settings",
+                    "no_characters": "No characters",
+                    "no_players": "No players connected"
+                }
+            },
+            "NoteDialog": {
+                "warning_msg": "Are you sure you wish to remove this?",
+                "edit_title": "Edit title",
+                "remove_note": "Remove note"
+            },
+            "selection": {
+                "edit_dialog": {
+                    "access": {
+                        "toggle_edit_access": "Toggle edit access",
+                        "toggle_movement_access": "Toggle movement access",
+                        "toggle_vision_access": "Toggle vision access",
+                        "remove_owner_access": "Remove owner access",
+                        "access": "Access",
+                        "default": "Default",
+                        "add_access": "Add access"
+                    },
+                    "logic": {
+                        "logic": "Logic",
+                        "door": "Door",
+                        "teleport_zone": "Teleport Zone",
+                        "target": "Target",
+                        "immediate_mode": "Immediate mode",
+                        "vision": "vision",
+                        "permissions": {
+                            "title": "Configure logic permissions",
+                            "request": "Request",
+                            "disabled": "Disabled"
+                        }
+                    },
+                    "dialog": {
+                        "current_value": "Current value",
+                        "remove_tracker": "Remove tracker",
+                        "dim_value": "Dim value",
+                        "toggle_light_source": "Toggle light source",
+                        "delete_aura": "Delete aura",
+                        "edit_shape": "Edit shape",
+                        "is_a_token": "Is a token",
+                        "is_invisible": "Is invisible",
+                        "is_defeated": "Is defeated",
+                        "is_locked": "Is locked",
+                        "show_badge": "Show badge",
+                        "show_annotation": "Is public",
+                        "block_vision_light": "Blocks vision/light",
+                        "block_movement": "Blocks movement"
+                    },
+                    "properties": {
+                        "properties": "Properties",
+                        "common": "Common",
+                        "advanced": "Advanced",
+                        "change_asset": "Change asset",
+                        "block_toggle": {
+                            "no": "No",
+                            "complete": "Complete",
+                            "behind": "Behind"
+                        }
+                    },
+                    "groups": {
+                        "groups": "Groups",
+                        "rules": "Rules",
+                        "character_set": "Character set",
+                        "custom_charset": "Custom charset",
+                        "creation_order": "Creation order",
+                        "charset": {
+                            "numbers": "numbers",
+                            "latin": "latin characters",
+                            "custom": "custom"
+                        },
+                        "order": {
+                            "incrementing": "incrementing",
+                            "random": "random"
+                        },
+                        "members": "Members",
+                        "show_badge_on_all_members": "Show badge on all members:",
+                        "badge": "Badge",
+                        "show_badge": "Show Badge",
+                        "create_new_group": "Create new group",
+                        "delete_group": "Delete group"
+                    },
+                    "extra": {
+                        "extra": "Extra",
+                        "lighting_vision": "Lighting & Vision",
+                        "upload_walls": "Upload walls",
+                        "remove_walls": "Remove walls",
+                        "apply_draft_info": "Apply ddraft info"
+                    },
+                    "grid": {
+                        "appearance": "Appearance",
+                        "infer_size": "Infer size",
+                        "size": "Size",
+                        "width": "Width",
+                        "height": "Height",
+                        "show_cells": "Show cells",
+                        "hex_settings": "Hex Settings",
+                        "odd_hex_orientation": "Odd Hex Orientation"
+                    },
+                    "tracker": {
+                        "border": "Border",
+                        "light_source": "Light source",
+                        "angle": "Angle",
+                        "display_on_token": "Display on token"
+                    },
+                    "customData": {
+                        "customData": "Custom Data",
+                        "addBranch": "Add Branch",
+                        "addElement": "Add Element",
+                        "nameConflictTitle": "Name Conflict",
+                        "nameConflictText": "The name you entered already exists. Please enter a different name.",
+                        "newBranchPrompt": "What name should this branch have?",
+                        "noChildren": "Here you can add custom data for this shape.\n\nThis can be used to have a rudimentary character sheet,\nbut it can also be used by tracker, auras and the dice system!",
+                        "removeBranchTitle": "Remove Branch",
+                        "removeBranchPrompt": "Are you sure you want to remove this branch and all its children?",
+                        "removeElementTitle": "Remove Element",
+                        "removeElementPrompt": "Are you sure you want to remove this element?"
+                    },
+                    "variants": {
+                        "variants": "Variants",
+                        "addVariant": "Add new variant",
+                        "storeAsVariant": "Store current data as variant",
+                        "empty": "Here you can add alternate visual representations of this shape.\n\nThis can be used for shapes that have alternate outfits or forms (e.g. boss stages).\n\nFor each variant a name and custom asset can be configured.\nWhen you activate a variant, its data will be copied to the main shape and become visible to all players.\nAny resizing you do of the asset on the board will only be done to the active variant.\nAllowing you to swap between variants of different sizes."
+                    }
+                },
+                "SelectionInfo": {
+                    "open_shape_props": "Open shape properties",
+                    "quick_edit_tracker": "Quick edit tracker",
+                    "quick_edit_aura": "Quick edit aura",
+                    "lock": "Toggle lock/unlock",
+                    "new_value_NAME": "New {name} value:",
+                    "updating_NAME": "Updating {name}",
+                    "notes": "note(s)",
+                    "open_note_manager_title": "Open note manager",
+                    "collapse_notes": "Collapse notes",
+                    "expand_notes": "Expand notes"
+                },
+                "ShapeContext": {
+                    "show_initiative": "Show initiative",
+                    "add_initiative": "Add initiative",
+                    "add_all_initiative": "Add all to initiative",
+                    "move_back": "Move to back",
+                    "move_front": "Move to front",
+                    "delete_shapes": "Delete shapes",
+                    "show_props": "Show properties",
+                    "remove_marker": "Remove marker",
+                    "set_marker": "Set marker",
+                    "no_spawn_set_title": "Could not move shapes",
+                    "no_spawn_set_text": "The destination has no spawn locations configured. Make sure to create at least one by using the context-menu in the destination location.",
+                    "open_notes": "Open notes",
+                    "create_character": "Create character",
+                    "move": "Move",
+                    "group": "Group",
+                    "create_group": "Create group",
+                    "enlarge_group": "Enlarge group",
+                    "remove_group": "Remove group",
+                    "split_from_group": "Split from group",
+                    "merge_groups": "Merge groups",
+                    "expand": "Expand",
+                    "collapse": "Collapse",
+                    "merging_group_title": "Merging group",
+                    "merging_group_text": "Do you wish to keep the original badges? This can lead to duplicate badges!",
+                    "merging_group_no": "No, reset them",
+                    "add_to_initiative": {
+                        "title": "Adding initiative",
+                        "text": "Some of the selected shapes belong to the same group. Do you wish to add 1 entry for these?",
+                        "no": "no, create a separate entry for each"
+                    },
+                    "choose_spawn_location": {
+                        "title": "Choose the desired spawn location"
+                    },
+                    "enter_name_for_template": "Enter a name for the template",
+                    "splitting_group": {
+                        "title": "Splitting group",
+                        "text": "Do you wish to keep the original badges?",
+                        "no": "No, reset them"
+                    }
+                }
+            },
+            "settings": {
+                "client": {
+                    "ClientSettings": {
+                        "client_settings": "Client Settings"
+                    },
+                    "DisplaySettings": {
+                        "use_high_dpi": "Use HiDPI/retina if applicable",
+                        "grid_size_in_pixels": "Size (in pixels):",
+                        "use_as_physical_gameboard": "Use as physical gameboard",
+                        "mini_size_in_inches": "Mini size (in inches)",
+                        "ppi": "Pixel density (PPI)",
+                        "Gameboard": "Gameboard"
+                    },
+                    "AppearanceSettings": {
+                        "toolbars": "Toolbars",
+                        "use_tool_icons": "Use icons",
+                        "fog": "Fog",
+                        "show_token_directions": "Show off-screen token directions",
+                        "grid_mode_label_format": "Label format in grid mode",
+                        "grid_mode_label_format_0": "Both",
+                        "grid_mode_label_format_1": "Distance only",
+                        "grid_mode_label_format_2": "#cells only",
+                        "wall": "Default wall colour",
+                        "window": "Default window colour",
+                        "closed_door": "Default closed door colour",
+                        "open_door": "Default open door colour"
+                    },
+                    "BehaviourSettings": {
+                        "invert_alt_set": "Invert ALT behaviour",
+                        "disable_scroll_to_zoom": "Disable scroll to zoom",
+                        "selection_info_tracker_mode": "Default tracker mode",
+                        "selection_info_tracker_mode_absolute": "Absolute",
+                        "selection_info_tracker_mode_relative": "Relative",
+                        "mouse_pan_mode": "Mouse pan mode",
+                        "mouse_pan_mode_0": "None",
+                        "mouse_pan_mode_1": "Middle click",
+                        "mouse_pan_mode_2": "Right click",
+                        "mouse_pan_mode_3": "Both",
+                        "snapping": "Snapping",
+                        "mouse_gestures": "Mouse & Gestures",
+                        "selection_info": "Selection Info"
+                    },
+                    "InitiativeSettings": {
+                        "open_on_activate": "Open automatically when initiative is started",
+                        "camera_lock": "Lock camera to active (owned) tokens",
+                        "vision_lock": "Lock vision to active (owned) tokens",
+                        "effect_visibility": "When to show effects",
+                        "effect_always": "Always",
+                        "effect_active": "Active and on-hover"
+                    },
+                    "PerformanceSettings": {
+                        "only_render_active_floor": "Only render active floor",
+                        "Rendering": "Rendering"
+                    },
+                    "common": {
+                        "Appearance": "Appearance",
+                        "Behaviour": "Behaviour",
+                        "Display": "Display",
+                        "Performance": "Performance"
+                    }
+                },
+                "dm": {
+                    "AdminSettings": {
+                        "delete_session_msg_CREATOR_ROOM": "ENTER {creator}/{room} TO CONFIRM CAMPAIGN REMOVAL.",
+                        "deleting_session": "DELETING CAMPAIGN",
+                        "unlock_NBSP_Session_NBSP": "Unlock Campaign",
+                        "lock_NBSP_Session_NBSP": "Lock Campaign",
+                        "unlock_this_session": "Unlock this campaign",
+                        "lock_this_session": "Lock this campaign",
+                        "kick": "Kick",
+                        "no_players_invite_msg": "There are no players yet, invite some using the link below!",
+                        "invite_code": "Invite code",
+                        "invitation_url": "Invitation URL:",
+                        "refresh_invitation_code": "Refresh invitation code",
+                        "danger_NBSP_zone": "Danger Zone",
+                        "dm_access_only": "(DM access only)",
+                        "remove_session": "Remove Campaign",
+                        "delete_session": "Delete this Campaign"
+                    },
+                    "DmSettings": {
+                        "dm_settings": "DM Settings"
+                    },
+                    "FeatureSettings": {
+                        "chat": "Enable chat",
+                        "dice": "Enable dice"
+                    }
+                },
+                "floor": {
+                    "title": "Floor Settings"
+                },
+                "common": {
+                    "overridden_msg": "Some of these settings can be overriden by location specific settings",
+                    "overridden_highlight": "highlighted",
+                    "reset_default": "Reset to the default",
+                    "sync_default": "Make this the new default",
+                    "overridden_highlight_path": "Settings that override the campaign defaults are {0}"
+                },
+                "GridSettings": {
+                    "unit_size_in_UNIT": "Unit Size (in {unit})",
+                    "use_grid": "Use grid",
+                    "size_unit": "Size Unit",
+                    "grid_type": "Grid Type",
+                    "SQUARE": "Squares",
+                    "POINTY_HEX": "Pointy Hexagons",
+                    "FLAT_HEX": "Flat Hexagons",
+                    "drop_ratio": "Drop Ratio",
+                    "drop_ratio_title": "The drop ratio is used for shapes with size information (e.g. goblin_1x1). The drop ratio is applied to this info to determine the final size."
+                },
+                "FloorSettings": {
+                    "backgrounds": "Map backgrounds",
+                    "air_background": "Air floor(s)",
+                    "ground_background": "Ground floor(s)",
+                    "underground_background": "Underground floor(s)",
+                    "pattern": "Pattern",
+                    "offset": "Offset",
+                    "scale": "Scale"
+                },
+                "VariaSettings": {
+                    "movePlayerOnTokenChange": "Move player(s) when a token they own changes location",
+                    "limitMovementDuringInitiative": "Limit movement during initiative to active shape"
+                },
+                "LocationBar": {
+                    "LocationAdminSettings": {
+                        "remove_location_msg_NAME": "Are you sure you wish to remove location {name}",
+                        "remove_location_yes": "Yes, delete this location",
+                        "remove_location_no": "please no",
+                        "move_existing_pl": "Move existing players on this location",
+                        "delete_this_location": "Delete this location",
+                        "archive_this_location": "Archive this location",
+                        "clone_this_location": "Clone this location",
+                        "choose_room": "Choose room"
+                    },
+                    "LocationSettings": {
+                        "location_settings": "Location Settings:"
+                    }
+                },
+                "permissions": {
+                    "edit_owned_tokens": "Edit owned tokens:",
+                    "move_owned_tokens": "Move owned tokens:",
+                    "resize_owned_tokens": "Resize owned tokens:"
+                },
+                "VisionSettings": {
+                    "min_full_vision_UNIT": "Minimal full vision ({unit}):",
+                    "max_vision_UNIT": "Maximal vision ({unit}):",
+                    "core": "Core",
+                    "fake_player": "Fake player:",
+                    "fill_fow": "Fill entire canvas with FOW:",
+                    "ambient_light": "Ambient light (outdoor mode):",
+                    "only_show_lights_los": "Only show lights in LoS:",
+                    "fow_opacity": "FOW opacity:",
+                    "advanced": "Advanced",
+                    "vision_mode": "Vision Mode:",
+                    "default": "Default",
+                    "experimental": "Experimental"
+                }
+            },
+            "templates": {
+                "choose": "Choose Template",
+                "save": "Save Template",
+                "overwrite": "Overwrite",
+                "create_new": "Create new"
+            },
+            "tools": {
+                "CreateTokenModal": {
+                    "create_basic_token": "Create basic token",
+                    "text": "Text",
+                    "fill": "Fill:",
+                    "border": "Border:"
+                },
+                "DefaultContext": {
+                    "bring_pl": "Bring players",
+                    "create_basic_token": "Create basic token",
+                    "show_initiative": "Show initiative",
+                    "create_spawn_location": "Create spawn location",
+                    "new_spawn_question": "What should this spawn location be named?",
+                    "new_spawn_title": "Creating new spawn location"
+                },
+                "DrawTool": {
+                    "foreground_color": "Foreground colour",
+                    "background_color": "Background colour",
+                    "mode": "Mode",
+                    "closed_polygon": "Closed polygon?",
+                    "brush_size": "Brush size",
+                    "font_size": "Font size",
+                    "square": "square",
+                    "circle": "circle",
+                    "draw-polygon": "polygon",
+                    "paint-brush": "brush",
+                    "normal": "normal",
+                    "reveal": "reveal",
+                    "hide": "hide",
+                    "erase": "erase",
+                    "ambient_barrier": "ambient barrier",
+                    "cone": "cone",
+                    "text": "text",
+                    "shape-category": "Basic settings",
+                    "vision-category": "Vision settings",
+                    "logic-category": "Logic settings",
+                    "door": "Add simple door logic"
+                },
+                "LightTool": {
+                    "place": "Place",
+                    "edit": "Edit",
+                    "point": "Point",
+                    "ambient": "Ambient",
+                    "barrier": "Barrier",
+                    "bright_radius": "Bright radius",
+                    "dim_radius": "Dim radius",
+                    "angle": "Angle (°)",
+                    "colour": "Colour",
+                    "click_to_place": "Click on the map to place a light source.",
+                    "click_to_place_ambient": "Click on the map to place an ambient light source.",
+                    "ambient_light_hint": "Ambient light simulates outdoor/sunlight. Add it somewhere to flood the area with light.",
+                    "click_light_on_map_to_select": "Click a light on the map to edit/move it.",
+                    "delete_light": "Delete light",
+                    "click_on_highlighted_vertex": "Click on a highlighted vertex",
+                    "add_extra_points": "Add extra points (optional)",
+                    "click_highlighted_point_to_close": "Click a highlighted point to close",
+                    "press_escape_to_cancel": "Press Escape to cancel",
+                    "define_natural_barriers": "Define natural barriers between outside and inside for ambient lights."
+                },
+                "MapTool": {
+                    "drag_to_resize": "Drag an area you wish to resize",
+                    "select_shape_msg": "Please select a shape first.",
+                    "set_target_grid_cells": "Set target grid cells",
+                    "horizontal": "Horizontal",
+                    "vertical": "Vertical",
+                    "apply": "APPLY",
+                    "cancel": "CANCEL"
+                },
+                "RulerTool": {
+                    "share": "Share with others",
+                    "grid": "Grid Mode"
+                },
+                "SpellTool": {
+                    "size": "Size",
+                    "range": "Range (radius)"
+                },
+                "tools": {
+                    "change_mode": "Change mode",
+                    "FP": "FP",
+                    "INI": "INI",
+                    "FP_title": "Toggle fake-player",
+                    "INI_title": "Toggle Initiative State",
+                    "LOS": "LOS",
+                    "LOS_title": "LoS state (DM only)"
+                },
+                "DiceTool": {
+                    "rolling": "Rolling...",
+                    "full_history": "Full History",
+                    "full_history_title": "Toggle Full History",
+                    "empty_history": "dice history is empty",
+                    "3D_dice": "3D Dice",
+                    "share": "Share",
+                    "history": "History",
+                    "previous_roll": "Previous Roll",
+                    "details": "Details",
+                    "open_options_title": "Show Additional Options",
+                    "toggle_advanced": "Toggle Advanced Mode",
+                    "toggle_breakdown": "Toggle Breakdown",
+                    "3D_options": {
+                        "off": "Off",
+                        "on": "On",
+                        "box": "Box"
+                    },
+                    "share_options": {
+                        "all": "All",
+                        "dm": "DM",
+                        "none": "None"
+                    },
+                    "breakdown_options": {
+                        "detailed": "Detailed",
+                        "simple": "Simple"
+                    },
+                    "advanced": "Advanced",
+                    "advanced_options": {
+                        "operators": "Operators",
+                        "selectors": "Selectors"
+                    },
+                    "clear_selection_title": "Clear Selection",
+                    "roll": "Roll!",
+                    "reroll_previous_title": "Reroll Previous",
+                    "limit_operator_options": {
+                        "keep": "keep",
+                        "drop": "drop",
+                        "min": "min",
+                        "max": "max"
+                    },
+                    "reroll": "Reroll",
+                    "selection_option_names": {
+                        "highest": "highest",
+                        "lowest": "lowest"
+                    }
+                },
+                "NoteTool": {
+                    "header": "Attaching note",
+                    "line1": "Select the shape you want to attach the note to.",
+                    "line2": "You can zoom and pan around."
+                },
+                "SelectTool": {
+                    "show_ruler": "Show ruler"
+                }
+            },
+            "ui": {
+                "github_msg": "Find the code on github!",
+                "discord_msg": "Join the community on discord!",
+                "patreon_msg": "Contribute using patreon!",
+                "open_loc_menu": "Open location menu",
+                "new_ver_msg": "There is a new version!",
+                "open_settings": "Open settings",
+                "changelog_RELEASE_LOG": "# Release {release}\n*For more details visit https://www.planarally.io/blog/*\n{log}",
+                "return_to_content": "Click to return to content"
+            },
+            "notes": {
+                "NoteCreate": {
+                    "header": "Create a new note",
+                    "title": "Title:",
+                    "title_placeholder": "New note...",
+                    "type": "Type:",
+                    "type_description": "(This can be modified later; a note can also be linked to multiple campaigns or locations.)",
+                    "campaign_note_title": "Campaign note",
+                    "campaign_note_body": "A note that is relevant to the current campaign in its entirety. Commonly used for things like lore and worldbuilding or personal notes.",
+                    "location_note_title": "Location specific note",
+                    "location_note_body": "A note that is relevant to the current location only. Commonly used for notes that are not relevant to other locations. (e.g. special rules, info on hidden rooms, etc.)",
+                    "no_link_note_title": "No link note",
+                    "no_link_note_body": "A note that is not linked to any campaign or location. Commonly used for asset templates or generic system rules (e.g. monster stats, condition rules, roll tables, etc.)"
+                },
+                "NoteDialog": {
+                    "show": "show",
+                    "open_in_manager": "open in note manager",
+                    "collapse": "Collapse note",
+                    "restore": "Restore note",
+                    "pop_out": "Pop out note",
+                    "close": "Close note",
+                    "edit": "Edit",
+                    "view_source": "view source"
+                },
+                "NoteList": {
+                    "title": "NOTES",
+                    "title_with_token": "for",
+                    "search_placeholder": "search through your notes..",
+                    "clear_search": "Clear Search",
+                    "filter": {
+                        "where_to_search": "Where to search",
+                        "title": "title",
+                        "text": "text",
+                        "author": "author",
+                        "local_locations": "Local: Locations",
+                        "active_location": "only in active location",
+                        "archived_location": "include archived locations",
+                        "local_shapes": "Local: Shapes",
+                        "note_with_shape": "show notes with shapes",
+                        "active_location_title": "Show only notes that were made in the current location"
+                    },
+                    "empty_note": "You don't have any notes yet!",
+                    "empty_search": "You have no notes that match this filter.",
+                    "name": "NAME",
+                    "owner": "OWNER",
+                    "tags": "TAGS",
+                    "actions": "ACTIONS",
+                    "toggle_tags": "Toggle tag filter: ",
+                    "filters": {
+                        "title": "Filters:",
+                        "tag_placeholder": "Search Tags...",
+                        "hide_title": "Hide Tag Search",
+                        "show_title": "Show Tag Search"
+                    }
+                },
+                "NoteEdit": {
+                    "back": "Back to list",
+                    "no_tags": "No tags yet.",
+                    "add_tag": "Add tag",
+                    "add_new_tag": "Add new tag",
+                    "md_aware": "This input is markdown aware!",
+                    "shapes": {
+                        "linked": "This note is linked to",
+                        "linked_shape": "shape(s)",
+                        "used": "of those is/are used in this location",
+                        "and": "and",
+                        "listed": "and is/are listed below.",
+                        "add": "Add a shape",
+                        "go_to_map": "Go to shape on the map",
+                        "remove": "Remove shape link"
+                    },
+                    "campaigns": {
+                        "link_to_current_campaign": "Link to current campaign",
+                        "link_to_current_location": "Link to current location"
+                    },
+                    "show_icon": "Show note icon on shape",
+                    "show_icon_title": "Checking this will render a special icon in the bottom-left of a shape on the map. This can be useful to remind yourself of an important note",
+                    "show_text": "Show text on shape hover",
+                    "show_text_title": "This will show the text of the note from the top side of the screen when you hover the shape.",
+                    "tab_label": {
+                        "view": "view",
+                        "edit": "edit",
+                        "view_title": "View the note as rendered markdown",
+                        "edit_title": "Edit the note",
+                        "triggers": "triggers & visuals",
+                        "triggers_label1": "Configure when the note should appear",
+                        "triggers_label2": "Only notes with shapes can have triggers",
+                        "access_title": "Configure access rights",
+                        "shapes": "shapes",
+                        "shapes_title": "See which shapes are linked to this note",
+                        "access": "access",
+                        "campaigns": "campaigns",
+                        "campaigns_title": "See which campaigns and locations are linked to this note"
+                    }
+                },
+                "note_types": {
+                    "global": "global",
+                    "local": "local",
+                    "all": "all"
+                }
+            },
+            "access": {
+                "can_view": "Can view",
+                "can_edit": "Can edit",
+                "remove_access": "Remove access",
+                "default_access": "default"
+            },
+            "chat": {
+                "title": "Chat",
+                "no_messages": "No messages yet."
+            }
+        },
+        "common": {
+            "view": "view",
+            "edit": "edit",
+            "access": "Access"
+        }
+    },
+    "layer": {
+        "map": "map",
+        "tokens": "tokens",
+        "dm": "dm",
+        "fow": "fow"
+    },
+    "tool": {
+        "Build": "Build",
+        "Play": "Play",
+        "Select": "Select",
+        "Pan": "Pan",
+        "Draw": "Draw",
+        "Ruler": "Ruler",
+        "Ping": "Ping",
+        "Map": "Map",
+        "Light": "Light",
+        "Filter": "Filter",
+        "Vision": "Vision",
+        "Spell": "Spell",
+        "Dice": "Dice"
+    },
+    "settings": {
+        "AccountSettings": {
+            "no_pwd_msg": "No new password given!",
+            "pwd_not_match": "The password fields don't match!",
+            "server_request_error": "Something went wrong during the server request",
+            "change_pwd": "Change password",
+            "remove_account_msg": "Are you sure you wish to remove your account?",
+            "delete_request_error": "Something went wrong with the delete request.",
+            "no_email_set": "no email set",
+            "general": "General",
+            "username": "Username:",
+            "email": "Email:",
+            "danger_zone": "Danger Zone",
+            "new_pwd": "New Password:",
+            "repeat_pwd": "Repeat password:",
+            "delete_account": "Delete account",
+            "delete_confirm_msg": "This action is irrevocable!"
+        },
+        "settings": {
+            "account_settings": "Account Settings",
+            "AccountSettings": "Account"
+        }
+    }
+}
