@@ -57,10 +57,6 @@ def watch_for_stop_key(key='x'):
 
 def main():
     threading.Thread(target=watch_for_stop_key, daemon=True).start()
-
-    history = []
-    while True:
-def main():
     #
     gameOn = True
     history = []
