@@ -1,0 +1,653 @@
+<script setup lang="ts">
+import { useDebounceFn } from "@vueuse/core";
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+
+import type { DefaultNoteFilter } from "../../../apiTypes";
+import type { GlobalId } from "../../../core/id";
+import { mostReadable, word2color } from "../../../core/utils";
+import { coreStore } from "../../../store/core";
+import { socket } from "../../api/socket";
+import { getGlobalId, getLocalId } from "../../id";
+import { noteState } from "../../systems/notes/state";
+import { NO_FILTER, ACTIVE_FILTER, NO_LINK_FILTER } from "../../systems/notes/types";
+import { type NoteId, NoteManagerMode, type NoteTag } from "../../systems/notes/types";
+import { popoutNote } from "../../systems/notes/ui";
+import { propertiesState } from "../../systems/properties/state";
+
+import NoteFilter from "./NoteFilter.vue";
+import {
+    customFilterOptions,
+    filters,
+    locationFilterOptions,
+    roomFilterOptions,
+    shapeFilterOptions,
+    tagFilterOptions,
+} from "./noteFilters";
+
+const emit = defineEmits<(e: "mode", mode: NoteManagerMode) => void>();
+
+const { t } = useI18n();
+
+onMounted(() => {
+    document.addEventListener("pointerdown", handleClickOutsideDialog);
+});
+
+onUnmounted(() => {
+    document.removeEventListener("pointerdown", handleClickOutsideDialog);
+});
+
+const searchFilters = reactive({
+    title: true,
+    text: false,
+    author: false,
+});
+
+interface QueryNote {
+    uuid: NoteId;
+    title: string;
+    creator: string;
+    tags: string[];
+}
+
+const searchBar = ref<HTMLInputElement | null>(null);
+const searchOptionsDialog = ref<HTMLDivElement | null>(null);
+const searchFilter = ref("");
+const showSearchFilters = ref(false);
+const currentPage = ref(1);
+const pageSize = ref(25);
+const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / pageSize.value)));
+
+const shapeFiltered = computed(() => noteState.reactive.shapeFilter !== undefined);
+const shapeName = computed(() => {
+    const shapeId = noteState.reactive.shapeFilter;
+    if (shapeId === undefined) return undefined;
+    return propertiesState.readonly.data.get(shapeId)?.name;
+});
+
+// this is probably disruptive if you quickly open with N and expect to close it with N again ?
+// onMounted(() => {
+//     searchBar.value?.focus();
+// });
+
+const isOpen = ref(false);
+
+// triggers when switching between modes
+onActivated(() => {
+    if (noteState.reactive.managerOpen) isOpen.value = true;
+});
+
+onDeactivated(() => {
+    isOpen.value = false;
+});
+
+// triggers when toggling the note manager (it's behind a v-show)
+watch(
+    () => noteState.reactive.managerOpen,
+    (open) => {
+        isOpen.value = open;
+    },
+);
+
+watch(
+    [isOpen, () => noteState.reactive.refresh],
+    async ([open, refresh]) => {
+        if (!open || Object.values(refresh).every((v) => !v)) return;
+        const promises = [];
+        if (refresh.searchQuery) promises.push(search());
+        if (refresh.shapeFilter) promises.push(updateShapeFilter());
+        if (refresh.locationFilter) promises.push(updateLocationFilter());
+        if (refresh.tagFilter) promises.push(updateTagFilter());
+
+        await Promise.all(promises);
+
+        noteState.mutableReactive.refresh = {
+            searchQuery: false,
+            locationFilter: false,
+            shapeFilter: false,
+            tagFilter: false,
+        };
+    },
+    {
+        deep: true,
+        immediate: true,
+    },
+);
+
+const debouncedSearch = useDebounceFn(() => void search(), 300);
+
+const searchResults = ref<(Omit<QueryNote, "tags"> & { tags: NoteTag[] })[]>([]);
+const totalCount = ref(0);
+const loading = ref(false);
+
+enum DefaultFilter {
+    // oxlint-disable-next-line no-shadow
+    NO_FILTER = "NO_FILTER",
+    // oxlint-disable-next-line no-shadow
+    ACTIVE_FILTER = "ACTIVE_FILTER",
+    // oxlint-disable-next-line no-shadow
+    NO_LINK_FILTER = "NO_LINK_FILTER",
+}
+
+function filterToServer<T extends number | string>(value: symbol | T): DefaultNoteFilter | T {
+    if (typeof value !== "symbol") return value;
+    if (value === NO_FILTER) return DefaultFilter.NO_FILTER;
+    if (value === ACTIVE_FILTER) return DefaultFilter.ACTIVE_FILTER;
+    if (value === NO_LINK_FILTER) return DefaultFilter.NO_LINK_FILTER;
+    return DefaultFilter.NO_FILTER;
+}
+
+async function search(): Promise<void> {
+    loading.value = true;
+    const shapes = noteState.raw.shapeFilter ? [noteState.raw.shapeFilter] : filters.shapes;
+    const [serverNotes, count] = (await socket.emitWithAck("Note.Search", {
+        search: searchFilter.value,
+        campaign_filter: filterToServer(filters.rooms[0]!),
+        location_filter: filters.locations.map(filterToServer),
+        shape_filter: shapes
+            .map((s) => (typeof s !== "symbol" ? getGlobalId(s) : s))
+            .filter((s) => s !== undefined)
+            .map(filterToServer),
+        tag_filter: filters.tags.map(filterToServer),
+        search_title: true,
+        search_text: false,
+        search_author: false,
+        page_number: currentPage.value,
+        page_size: pageSize.value,
+    })) as [QueryNote[], number];
+    searchResults.value = await Promise.all(
+        serverNotes.map(async (n) => ({
+            ...n,
+            tags: await Promise.all(n.tags.map(async (tag) => ({ name: tag, colour: await word2color(tag) }))),
+        })),
+    );
+    totalCount.value = count;
+
+    loading.value = false;
+}
+
+async function updateLocationFilter(): Promise<void> {
+    const locationFilters = (await socket.emitWithAck("Note.Filters.Location.Get")) as {
+        id: number;
+        name: string;
+    }[];
+    customFilterOptions.locations = locationFilters.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function updateShapeFilter(): Promise<void> {
+    const shapeFilters = (await socket.emitWithAck("Note.Filters.Shape.Get")) as {
+        uuid: GlobalId;
+        name: string;
+        assetHash: string;
+    }[];
+    customFilterOptions.shapes = shapeFilters
+        .map(({ uuid, ...s }) => ({ ...s, id: getLocalId(uuid, false)! }))
+        .filter((s) => s.id !== undefined)
+        .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+async function updateTagFilter(): Promise<void> {
+    const tagFilters = (await socket.emitWithAck("Note.Filters.Tag.Get")) as string[];
+    customFilterOptions.tags = tagFilters.sort((a, b) => a.localeCompare(b));
+}
+
+// **** SEARCH TRIGGERS ****
+
+watch([searchFilter], debouncedSearch);
+
+watch(
+    [filters, pageSize, () => noteState.reactive.shapeFilter],
+    async () => {
+        currentPage.value = 1;
+        await search();
+    },
+    {
+        deep: true,
+        immediate: true,
+    },
+);
+
+watch(currentPage, search);
+
+// **** END ****
+
+function handleClickOutsideDialog(event: MouseEvent): void {
+    if (searchOptionsDialog.value) {
+        if (showSearchFilters.value && !searchOptionsDialog.value.contains(event.target as Node)) {
+            showSearchFilters.value = false;
+        }
+    }
+}
+
+function toggleTagInSearch(tag: NoteTag): void {
+    if (filters.tags.includes(tag.name)) {
+        filters.tags = filters.tags.filter((x) => x !== tag.name);
+        if (filters.tags.length === 0) {
+            filters.tags.push(NO_FILTER);
+        }
+    } else {
+        filters.tags = [...filters.tags.filter((x) => x !== NO_FILTER), tag.name];
+    }
+}
+
+function editNote(noteId: NoteId): void {
+    noteState.mutableReactive.currentNote = noteId;
+    emit("mode", NoteManagerMode.Edit);
+}
+
+function clearShapeFilter(): void {
+    noteState.mutableReactive.shapeFilter = undefined;
+}
+
+function clearSearchBar(): void {
+    searchFilter.value = "";
+    searchBar.value?.focus();
+}
+</script>
+
+<template>
+    <header>
+        <div>
+            {{ t("game.ui.notes.NoteList.title") }}
+            {{ shapeName ? `${t("game.ui.notes.NoteList.title_with_token")} ${shapeName}` : "" }}
+        </div>
+    </header>
+    <div id="notes-search" :class="shapeFiltered ? 'disabled' : ''">
+        <div id="search-bar">
+            <font-awesome-icon icon="magnifying-glass" @click="searchBar?.focus()" />
+            <div id="search-field">
+                <input
+                    ref="searchBar"
+                    v-model="searchFilter"
+                    type="text"
+                    :placeholder="t('game.ui.notes.NoteList.search_placeholder')"
+                />
+                <font-awesome-icon
+                    v-show="searchFilter.length > 0"
+                    id="clear-button"
+                    icon="circle-xmark"
+                    :title="t('game.ui.notes.NoteList.clear_search')"
+                    @click.stop="clearSearchBar"
+                />
+            </div>
+            <font-awesome-icon
+                id="search-options-icon"
+                icon="sliders"
+                style="opacity: 0.5"
+                @click="showSearchFilters = true"
+            />
+            <div v-show="showSearchFilters" id="search-filter" ref="searchOptionsDialog">
+                <font-awesome-icon id="search-options-close-icon" icon="sliders" @click="showSearchFilters = false" />
+                <fieldset>
+                    <legend>{{ t("game.ui.notes.NoteList.filter.where_to_search") }}</legend>
+                    <div>
+                        <input id="note-search-title" v-model="searchFilters.title" type="checkbox" />
+                        <label for="note-search-title">{{ t("game.ui.notes.NoteList.filter.title") }}</label>
+                    </div>
+                    <div>
+                        <input id="note-search-text" v-model="searchFilters.text" type="checkbox" />
+                        <label for="note-search-text">{{ t("game.ui.notes.NoteList.filter.text") }}</label>
+                    </div>
+                    <div>
+                        <input id="note-search-author" v-model="searchFilters.author" type="checkbox" />
+                        <label for="note-search-author">{{ t("game.ui.notes.NoteList.filter.author") }}</label>
+                    </div>
+                </fieldset>
+            </div>
+        </div>
+        <div id="search-filters">
+            <span style="padding-right: 1rem">{{ t("game.ui.notes.NoteList.filters.title") }}</span>
+            <NoteFilter v-model="filters.rooms" label="campaign" :options="roomFilterOptions" :multi-select="false" />
+            <NoteFilter
+                v-model="filters.locations"
+                label="location"
+                :multi-select="true"
+                :options="locationFilterOptions"
+                :disabled="filters.rooms.includes(NO_FILTER) || filters.rooms.includes(NO_LINK_FILTER)"
+            />
+            <NoteFilter
+                v-show="!shapeFiltered"
+                v-model="filters.shapes"
+                label="shape"
+                :options="shapeFilterOptions"
+                :multi-select="true"
+            />
+            <NoteFilter v-model="filters.tags" label="tag" :options="tagFilterOptions" :multi-select="true" />
+            <div id="filter-bubbles">
+                <div v-if="shapeName" class="shape-name tag-bubble removable" @click="clearShapeFilter">
+                    {{ shapeName }}
+                </div>
+            </div>
+        </div>
+    </div>
+    <template v-if="searchResults.length === 0">
+        <div id="no-notes">
+            <template v-if="noteState.reactive.notes.size === 0">
+                {{ t("game.ui.notes.NoteList.empty_note") }}
+            </template>
+            <template v-else>
+                <span>{{ t("game.ui.notes.NoteList.empty_search") }}</span>
+            </template>
+        </div>
+    </template>
+    <template v-else>
+        <div id="notes-table">
+            <div class="header">{{ t("game.ui.notes.NoteList.name") }}</div>
+            <div class="header">{{ t("game.ui.notes.NoteList.owner") }}</div>
+            <div class="header">{{ t("game.ui.notes.NoteList.tags") }}</div>
+            <div class="header">{{ t("game.ui.notes.NoteList.actions") }}</div>
+            <template v-for="note of searchResults" :key="note.uuid">
+                <div class="title" @click="editNote(note.uuid)">{{ note.title }}</div>
+                <div>{{ note.creator === coreStore.state.username ? t("common.you") : note.creator }}</div>
+                <div class="note-tags">
+                    <div
+                        v-for="tag of note.tags"
+                        :key="tag.name"
+                        :style="{ color: mostReadable(tag.colour), backgroundColor: tag.colour }"
+                        class="tag-bubble"
+                        :title="`${t('game.ui.notes.NoteList.toggle_tags')}${tag.name}`"
+                        @click="toggleTagInSearch(tag)"
+                    >
+                        {{ tag.name }}
+                    </div>
+                    <div v-if="note.tags.length === 0">/</div>
+                </div>
+                <div class="note-actions">
+                    <font-awesome-icon
+                        icon="pencil"
+                        :title="t('game.ui.notes.NoteDialog.edit')"
+                        @click="editNote(note.uuid)"
+                    />
+                    <font-awesome-icon
+                        :icon="['far', 'window-restore']"
+                        :title="t('game.ui.notes.NoteDialog.pop_out')"
+                        @click="popoutNote(note.uuid)"
+                    />
+                </div>
+            </template>
+        </div>
+    </template>
+    <footer>
+        <div style="user-select: none">
+            <font-awesome-icon
+                icon="chevron-left"
+                :class="{ disabled: currentPage === 1 }"
+                @click="currentPage = Math.max(1, currentPage - 1)"
+            />
+            page {{ currentPage }} of {{ totalPages }}
+            <font-awesome-icon
+                icon="chevron-right"
+                :class="{ disabled: currentPage === totalPages }"
+                @click="currentPage = Math.min(totalPages, currentPage + 1)"
+            />
+        </div>
+        <div style="flex-grow: 1"></div>
+        <div id="new-note-selector" @click="$emit('mode', NoteManagerMode.Create)">
+            {{ t("game.ui.menu.MenuBar.new_note")
+            }}{{ shapeName ? ` ${t("game.ui.notes.NoteList.title_with_token")} ${shapeName}` : "" }}
+        </div>
+    </footer>
+</template>
+
+<style scoped lang="scss">
+header {
+    position: relative;
+    display: flex;
+
+    > :first-child {
+        flex-grow: 1;
+        margin-right: 1rem;
+        border-bottom: solid 1px black;
+        font-weight: bold;
+        font-size: 1.75em;
+    }
+}
+
+#notes-search {
+    margin: 1rem 0;
+    position: relative;
+
+    > #search-bar {
+        position: relative;
+        display: flex;
+        align-items: center;
+        height: 2.7rem;
+        border: solid 2px black;
+        border-radius: 1rem;
+
+        > #kind-selector {
+            flex-shrink: 0;
+            height: calc(100% + 4px); // 2px border on top and bottom
+            margin-left: -2px; // 2px border on left
+            border-radius: 1rem;
+            border: solid 2px black;
+            outline: none;
+            text-transform: capitalize;
+            font-size: 1.25em;
+            text-align-last: center;
+            padding: 0 0.5em;
+            background-color: rgba(238, 244, 255, 1);
+            > option {
+                background-color: rgba(245, 245, 245, 1);
+            }
+        }
+
+        > svg:first-of-type {
+            margin-left: 1rem;
+        }
+
+        > .shape-name {
+            flex-shrink: 0;
+            margin-left: 0.5rem;
+            font-weight: bold;
+
+            &:hover {
+                text-decoration: line-through;
+                cursor: pointer;
+            }
+        }
+
+        > #search-field {
+            flex-grow: 1;
+            flex-shrink: 1;
+
+            outline: none;
+            border: none;
+            border-radius: 1rem;
+
+            display: flex;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+
+            > input {
+                padding: 0.5rem 1rem;
+                outline: none;
+                border: none;
+                border-radius: 1rem;
+                flex-grow: 1;
+                height: 100%;
+                font-size: 1.25em;
+            }
+            > #clear-button {
+                border: 0;
+                font-size: 1rem;
+                cursor: pointer;
+            }
+        }
+        > #search-options-icon {
+            margin: 0 1rem;
+        }
+
+        #search-options-close-icon {
+            position: absolute;
+            right: 1rem;
+            top: 0.7rem;
+        }
+
+        #search-filter {
+            z-index: 1;
+            position: absolute;
+            top: -2px;
+            right: -2px;
+
+            display: grid;
+            grid-template-columns: repeat(2, auto);
+            gap: 0.5rem;
+
+            padding: 1rem;
+            padding-top: 2rem;
+            border: solid 2px black;
+            border-radius: 1rem;
+
+            background-color: white;
+
+            label {
+                display: inline-block;
+            }
+        }
+    }
+    > #search-filters {
+        padding: 0.5rem 1rem;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        row-gap: 0.5rem;
+        align-items: center;
+        border-bottom: solid 2px black;
+
+        > #filter-bubbles {
+            flex: 5 0 0;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            flex-wrap: wrap;
+            row-gap: 0.5rem;
+            height: 100%;
+            padding: 0.25rem;
+
+            > .shape-name {
+                font-weight: bold;
+                border: solid 2px black;
+            }
+
+            > div {
+                flex: 0 1 auto;
+                word-break: break-word;
+            }
+        }
+    }
+}
+
+#no-notes {
+    font-style: italic;
+    display: flex;
+    justify-content: center;
+}
+
+#notes-table {
+    display: grid;
+    grid-template-columns: 1fr auto minmax(5rem, auto) auto;
+    column-gap: 1rem;
+    row-gap: 0.5rem;
+    align-items: center;
+    overflow-y: auto;
+
+    .title {
+        font-size: 1.25em;
+        padding: 0.5rem 1rem;
+
+        border-radius: 1rem;
+
+        &:hover {
+            cursor: pointer;
+            background-color: lightblue;
+        }
+    }
+
+    .header {
+        position: sticky;
+        top: 0;
+        border-bottom: solid 1px black;
+        background-color: white;
+
+        &:first-child {
+            margin-left: 1rem;
+        }
+    }
+
+    .kind {
+        padding: 0.25rem 0.5rem;
+        background-color: lightcoral;
+        border-radius: 0.25rem;
+    }
+
+    .note-tags {
+        display: flex;
+
+        > div {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.5rem;
+            margin-right: 0.5rem;
+        }
+    }
+
+    .note-actions {
+        display: flex;
+
+        > * {
+            margin-right: 0.5rem;
+
+            &:hover {
+                cursor: pointer;
+            }
+
+            &.lowOpacity {
+                opacity: 0.25;
+
+                &:hover {
+                    cursor: not-allowed;
+                }
+            }
+        }
+    }
+}
+.tag-bubble {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.5rem;
+    margin-right: 0.5rem;
+}
+
+.tag-bubble.is-active,
+.tag-bubble:hover {
+    filter: brightness(85%);
+    cursor: pointer;
+}
+
+.removable:hover {
+    text-decoration: line-through;
+}
+
+footer {
+    display: flex;
+    align-items: center;
+    margin-top: 2rem;
+
+    .disabled {
+        opacity: 0.5;
+    }
+
+    #new-note-selector {
+        background-color: lightblue;
+        border: solid 2px lightblue;
+        border-radius: 1rem;
+
+        padding: 0.5rem 0.75rem;
+
+        &:hover {
+            cursor: pointer;
+            background-color: rgba(173, 216, 230, 0.5);
+        }
+    }
+}
+</style>

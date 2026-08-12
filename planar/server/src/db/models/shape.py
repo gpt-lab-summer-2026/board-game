@@ -1,0 +1,166 @@
+import json
+from typing import TYPE_CHECKING, Any, cast
+from uuid import uuid4
+
+from peewee import BooleanField, FloatField, ForeignKeyField, IntegerField, SmallIntegerField, TextField
+
+from ...api.models.common import PositionTuple
+from ..base import BaseDbModel
+from ..typed import SelectSequence
+from .character import Character
+from .group import Group
+from .layer import Layer
+
+if TYPE_CHECKING:
+    from .asset_rect import AssetRect
+    from .aura import Aura
+    from .circle import Circle
+    from .circular_token import CircularToken
+    from .font_awesome import FontAwesome
+    from .line import Line
+    from .polygon import Polygon
+    from .rect import Rect
+    from .note_shape import NoteShape
+    from .shape_custom_data import ShapeCustomData
+    from .shape_data_block import ShapeDataBlock
+    from .shape_owner import ShapeOwner
+    from .shape_type import ShapeType
+    from .text import Text
+    from .tracker import Tracker
+
+
+class Shape(BaseDbModel):
+    trackers: SelectSequence["Tracker"]
+    auras: SelectSequence["Aura"]
+    owners: SelectSequence["ShapeOwner"]
+    assetrect_set: SelectSequence["AssetRect"]
+    circle_set: SelectSequence["Circle"]
+    circulartoken_set: SelectSequence["CircularToken"]
+    fontawesome_set: SelectSequence["FontAwesome"]
+    line_set: SelectSequence["Line"]
+    polygon_set: SelectSequence["Polygon"]
+    rect_set: SelectSequence["Rect"]
+    text_set: SelectSequence["Text"]
+    character_id: int | None
+    data_blocks: SelectSequence["ShapeDataBlock"]
+    custom_data: SelectSequence["ShapeCustomData"]
+    notes: SelectSequence["NoteShape"]
+
+    uuid = cast(str, TextField(primary_key=True))
+    layer = cast(
+        Layer | None,
+        ForeignKeyField(Layer, backref="shapes", on_delete="CASCADE", null=True),
+    )
+    type_ = cast(str, TextField())
+    x = cast(float, FloatField())
+    y = cast(float, FloatField())
+    name = cast(str | None, TextField(null=True))
+    name_visible = cast(bool, BooleanField(default=False))
+    fill_colour = cast(str, TextField(default="#000"))
+    stroke_colour = cast(str, TextField(default="#fff"))
+    vision_obstruction = cast(int, SmallIntegerField(default=False))
+    movement_obstruction = cast(bool, BooleanField(default=False))
+    draw_operator = cast(str, TextField(default="source-over"))
+    index = cast(int, IntegerField())
+    options = cast(str | None, TextField(null=True))
+    badge = cast(int, IntegerField(default=1))
+    show_badge = cast(bool, BooleanField(default=False))
+    default_edit_access = cast(bool, BooleanField(default=False))
+    default_vision_access = cast(bool, BooleanField(default=False))
+    is_invisible = cast(bool, BooleanField(default=False))
+    is_defeated = cast(bool, BooleanField(default=False))
+    default_movement_access = cast(bool, BooleanField(default=False))
+    is_locked = cast(bool, BooleanField(default=False))
+    angle = cast(float, FloatField(default=0))
+    stroke_width = cast(int, IntegerField(default=2))
+    group = cast(
+        Group | None,
+        ForeignKeyField(Group, backref="members", null=True, default=None, on_delete="SET NULL"),
+    )
+    ignore_zoom_size = cast(bool, BooleanField(default=False))
+    is_door = cast(bool, BooleanField(default=False))
+    is_teleport_zone = cast(bool, BooleanField(default=False))
+    character = cast(
+        Character | None,
+        ForeignKeyField(Character, backref="shapes", null=True, default=None, on_delete="SET NULL"),
+    )
+    odd_hex_orientation = cast(bool, BooleanField(default=False))
+    size_x = cast(int, IntegerField(default=0))
+    size_y = cast(int, IntegerField(default=0))
+    show_cells = cast(bool, BooleanField(default=False))
+    cell_fill_colour = cast(str, TextField(null=True, default=None))
+    cell_stroke_colour = cast(str, TextField(null=True, default=None))
+    cell_stroke_width = cast(int, IntegerField(null=True, default=None))
+
+    def __repr__(self):
+        return f"<Shape {self.get_path()}>"
+
+    def get_path(self):
+        if self.layer:
+            return f"{self.name}@{self.layer.get_path()}"
+        else:
+            return self.name
+
+    def get_options(self) -> dict[str, Any]:
+        return dict(json.loads(self.options or "[]"))
+
+    def set_options(self, options: dict[str, Any]) -> None:
+        self.options = json.dumps([[k, v] for k, v in options.items()])
+
+    @property
+    def center(self) -> PositionTuple:
+        x_off, y_off = self.subtype.get_center_offset()
+        return PositionTuple(x=self.x + x_off, y=self.y + y_off)
+
+    @center.setter
+    def center(self, center: PositionTuple):
+        x_off, y_off = self.subtype.get_center_offset()
+        self.x = center.x - x_off
+        self.y = center.y - y_off
+
+    @property
+    def subtype(self) -> "ShapeType":
+        return getattr(self, f"{self.type_}_set").get()
+
+    def make_copy(self, dst_layer, new_group):
+        new_shape = Shape.create(
+            uuid=str(uuid4()),
+            layer=dst_layer,
+            type_=self.type_,
+            x=self.x,
+            y=self.y,
+            name=self.name,
+            name_visible=self.name_visible,
+            fill_colour=self.fill_colour,
+            stroke_colour=self.stroke_colour,
+            vision_obstruction=self.vision_obstruction,
+            movement_obstruction=self.movement_obstruction,
+            draw_operator=self.draw_operator,
+            index=self.index,
+            options=self.options,
+            badge=self.badge,
+            show_badge=self.show_badge,
+            default_edit_access=self.default_edit_access,
+            default_vision_access=self.default_vision_access,
+            is_invisible=self.is_invisible,
+            is_defeated=self.is_defeated,
+            default_movement_access=self.default_movement_access,
+            is_locked=self.is_locked,
+            angle=self.angle,
+            stroke_width=self.stroke_width,
+            group=new_group,
+            ignore_zoom_size=self.ignore_zoom_size,
+        )
+
+        self.subtype.make_copy(new_shape)
+
+        for aura in self.auras:
+            aura.make_copy(new_shape)
+
+        for tracker in self.trackers:
+            tracker.make_copy(new_shape)
+
+        for owner in self.owners:
+            owner.make_copy(new_shape)
+
+        return new_shape
