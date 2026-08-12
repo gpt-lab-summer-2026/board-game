@@ -1,75 +1,30 @@
-# React + TypeScript + Vite
+# Board game
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Features
 
-Currently, two official plugins are available:
+Version 1: completely digital 'Tampereen tuikahdus' -game that can be played via players' audio input. Software has build in LLM that handles moves and user audio input is given to LLM.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Version 2: DnD game, game board is projected to a table, which has been generated with a model. Player's play as normally DnD would be played but LLM narrates the stroy?? and generates the sceneray for players. Option for playing completely via audio input, for example for disabled people.
 
-## React Compiler
+## Hardware
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Software
 
-## Expanding the ESLint configuration
+kokoro models: https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.0
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+gemma 3 4b it q4: https://huggingface.co/unsloth/gemma-3-4b-it-GGUF/tree/005e437a164cd0ca77d29d0646c43bc5d29b6134
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Tampereen tuikahdus
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+React application with python backend. Frontend handles the visual game and the game logic, backend handles the TTS, STT and LLM and connects to frontend with HTTP requests.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Supported Languages
 
-```
+## Running program
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+run with commands:
+`npm run llm`
+`npm run dev`
+`python -m voice.play_game`
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+## Possible improvements / additions

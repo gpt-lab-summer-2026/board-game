@@ -1,0 +1,2692 @@
+{
+  "meta": {
+    "image": "../assets/map1.jpg",
+    "width": 733,
+    "height": 1024,
+    "generated": "2026-08-04T06:14:40.030Z",
+    "cities": 32,
+    "spaces": 220,
+    "edges": 265
+  },
+  "spaces": [
+    {
+      "id": "keskustori",
+      "kind": "city",
+      "name": "Keskustori",
+      "x": 0.2442,
+      "y": 0.1417
+    },
+    {
+      "id": "s1",
+      "kind": "step",
+      "x": 0.26221,
+      "y": 0.18135
+    },
+    {
+      "id": "s2",
+      "kind": "step",
+      "x": 0.2985,
+      "y": 0.19541
+    },
+    {
+      "id": "s3",
+      "kind": "step",
+      "x": 0.34543,
+      "y": 0.19961
+    },
+    {
+      "id": "s4",
+      "kind": "step",
+      "x": 0.38486,
+      "y": 0.17988
+    },
+    {
+      "id": "koskipuisto",
+      "kind": "city",
+      "name": "Koskipuisto",
+      "x": 0.44557,
+      "y": 0.16504
+    },
+    {
+      "id": "s5",
+      "kind": "step",
+      "x": 0.42292,
+      "y": 0.19746
+    },
+    {
+      "id": "s6",
+      "kind": "step",
+      "x": 0.43411,
+      "y": 0.22432
+    },
+    {
+      "id": "vapriikki",
+      "kind": "city",
+      "name": "Vapriikki",
+      "x": 0.4839,
+      "y": 0.21387
+    },
+    {
+      "id": "s7",
+      "kind": "step",
+      "x": 0.47517,
+      "y": 0.25791
+    },
+    {
+      "id": "s8",
+      "kind": "step",
+      "x": 0.51228,
+      "y": 0.27803
+    },
+    {
+      "id": "s9",
+      "kind": "step",
+      "x": 0.54939,
+      "y": 0.27783
+    },
+    {
+      "id": "s10",
+      "kind": "step",
+      "x": 0.59018,
+      "y": 0.27471
+    },
+    {
+      "id": "s11",
+      "kind": "step",
+      "x": 0.61787,
+      "y": 0.28779
+    },
+    {
+      "id": "tulli",
+      "kind": "city",
+      "name": "Tulli",
+      "x": 0.65293,
+      "y": 0.31191
+    },
+    {
+      "id": "s12",
+      "kind": "step",
+      "x": 0.66098,
+      "y": 0.28213
+    },
+    {
+      "id": "s13",
+      "kind": "step",
+      "x": 0.67149,
+      "y": 0.25928
+    },
+    {
+      "id": "s14",
+      "kind": "step",
+      "x": 0.69168,
+      "y": 0.24736
+    },
+    {
+      "id": "Tammelan tori",
+      "kind": "city",
+      "name": "Tampere talo",
+      "x": 0.69673,
+      "y": 0.21729
+    },
+    {
+      "id": "s15",
+      "kind": "step",
+      "x": 0.66057,
+      "y": 0.35293
+    },
+    {
+      "id": "s16",
+      "kind": "step",
+      "x": 0.64079,
+      "y": 0.37246
+    },
+    {
+      "id": "rautatieasema",
+      "kind": "city",
+      "name": "Rautatieasema",
+      "x": 0.61446,
+      "y": 0.40645
+    },
+    {
+      "id": "s17",
+      "kind": "step",
+      "x": 0.6648,
+      "y": 0.40986
+    },
+    {
+      "id": "s18",
+      "kind": "step",
+      "x": 0.71132,
+      "y": 0.40146
+    },
+    {
+      "id": "s19",
+      "kind": "step",
+      "x": 0.74775,
+      "y": 0.38779
+    },
+    {
+      "id": "sorsapuisto",
+      "kind": "city",
+      "name": "Sorsapuisto",
+      "x": 0.79359,
+      "y": 0.35234
+    },
+    {
+      "id": "s20",
+      "kind": "step",
+      "x": 0.79563,
+      "y": 0.3915
+    },
+    {
+      "id": "s21",
+      "kind": "step",
+      "x": 0.8045,
+      "y": 0.41504
+    },
+    {
+      "id": "yliopisto-keskusta-kampus",
+      "kind": "city",
+      "name": "Yliopisto - keskusta kampus",
+      "x": 0.81678,
+      "y": 0.45986
+    },
+    {
+      "id": "s22",
+      "kind": "step",
+      "x": 0.88145,
+      "y": 0.45732
+    },
+    {
+      "id": "s23",
+      "kind": "step",
+      "x": 0.92005,
+      "y": 0.45586
+    },
+    {
+      "id": "iidesjarvi",
+      "kind": "city",
+      "name": "Iidesjärvi",
+      "x": 0.97981,
+      "y": 0.4415
+    },
+    {
+      "id": "s24",
+      "kind": "step",
+      "x": 0.94038,
+      "y": 0.47656
+    },
+    {
+      "id": "s25",
+      "kind": "step",
+      "x": 0.90737,
+      "y": 0.4959
+    },
+    {
+      "id": "s26",
+      "kind": "step",
+      "x": 0.8734,
+      "y": 0.51299
+    },
+    {
+      "id": "s27",
+      "kind": "step",
+      "x": 0.83465,
+      "y": 0.53506
+    },
+    {
+      "id": "s28",
+      "kind": "step",
+      "x": 0.81542,
+      "y": 0.5583
+    },
+    {
+      "id": "kalevan-prisma",
+      "kind": "city",
+      "name": "Kalevan prisma",
+      "x": 0.80164,
+      "y": 0.5999
+    },
+    {
+      "id": "s29",
+      "kind": "step",
+      "x": 0.78172,
+      "y": 0.63857
+    },
+    {
+      "id": "s30",
+      "kind": "step",
+      "x": 0.80082,
+      "y": 0.66055
+    },
+    {
+      "id": "makkarajarvi",
+      "kind": "city",
+      "name": "Makkarajärvi",
+      "x": 0.80655,
+      "y": 0.69434
+    },
+    {
+      "id": "s31",
+      "kind": "step",
+      "x": 0.74816,
+      "y": 0.70654
+    },
+    {
+      "id": "s32",
+      "kind": "step",
+      "x": 0.73151,
+      "y": 0.72881
+    },
+    {
+      "id": "s33",
+      "kind": "step",
+      "x": 0.71446,
+      "y": 0.74307
+    },
+    {
+      "id": "s34",
+      "kind": "step",
+      "x": 0.70273,
+      "y": 0.76807
+    },
+    {
+      "id": "kapina",
+      "kind": "city",
+      "name": "Kapina",
+      "x": 0.68008,
+      "y": 0.80732
+    },
+    {
+      "id": "s35",
+      "kind": "step",
+      "x": 0.62169,
+      "y": 0.81348
+    },
+    {
+      "id": "s36",
+      "kind": "step",
+      "x": 0.6251,
+      "y": 0.77852
+    },
+    {
+      "id": "wainolat",
+      "kind": "city",
+      "name": "Wäinölät",
+      "x": 0.61078,
+      "y": 0.73828
+    },
+    {
+      "id": "s37",
+      "kind": "step",
+      "x": 0.56344,
+      "y": 0.74805
+    },
+    {
+      "id": "s38",
+      "kind": "step",
+      "x": 0.52483,
+      "y": 0.74707
+    },
+    {
+      "id": "s39",
+      "kind": "step",
+      "x": 0.48745,
+      "y": 0.75332
+    },
+    {
+      "id": "suolijarvi",
+      "kind": "city",
+      "name": "Suolijärvi",
+      "x": 0.44475,
+      "y": 0.77168
+    },
+    {
+      "id": "s40",
+      "kind": "step",
+      "x": 0.48977,
+      "y": 0.79307
+    },
+    {
+      "id": "s41",
+      "kind": "step",
+      "x": 0.49604,
+      "y": 0.82139
+    },
+    {
+      "id": "s42",
+      "kind": "step",
+      "x": 0.48895,
+      "y": 0.84648
+    },
+    {
+      "id": "yliopisto-hervannan-kampus",
+      "kind": "city",
+      "name": "Yliopisto - Hervannan kampus",
+      "x": 0.49986,
+      "y": 0.89893
+    },
+    {
+      "id": "s43",
+      "kind": "step",
+      "x": 0.68199,
+      "y": 0.73213
+    },
+    {
+      "id": "s44",
+      "kind": "step",
+      "x": 0.69059,
+      "y": 0.71836
+    },
+    {
+      "id": "s45",
+      "kind": "step",
+      "x": 0.65662,
+      "y": 0.70342
+    },
+    {
+      "id": "s46",
+      "kind": "step",
+      "x": 0.62497,
+      "y": 0.68564
+    },
+    {
+      "id": "s47",
+      "kind": "step",
+      "x": 0.5809,
+      "y": 0.67686
+    },
+    {
+      "id": "s48",
+      "kind": "step",
+      "x": 0.54502,
+      "y": 0.67568
+    },
+    {
+      "id": "s49",
+      "kind": "step",
+      "x": 0.50109,
+      "y": 0.67471
+    },
+    {
+      "id": "s50",
+      "kind": "step",
+      "x": 0.46303,
+      "y": 0.67021
+    },
+    {
+      "id": "hervannan-vesitorni",
+      "kind": "city",
+      "name": "Hervannan vesitorni",
+      "x": 0.4281,
+      "y": 0.63516
+    },
+    {
+      "id": "s51",
+      "kind": "step",
+      "x": 0.4779,
+      "y": 0.64961
+    },
+    {
+      "id": "s52",
+      "kind": "step",
+      "x": 0.51705,
+      "y": 0.64424
+    },
+    {
+      "id": "s53",
+      "kind": "step",
+      "x": 0.54625,
+      "y": 0.62246
+    },
+    {
+      "id": "turtola",
+      "kind": "city",
+      "name": "Turtola",
+      "x": 0.59877,
+      "y": 0.61426
+    },
+    {
+      "id": "s54",
+      "kind": "step",
+      "x": 0.6442,
+      "y": 0.58506
+    },
+    {
+      "id": "s55",
+      "kind": "step",
+      "x": 0.66112,
+      "y": 0.55986
+    },
+    {
+      "id": "s56",
+      "kind": "step",
+      "x": 0.6839,
+      "y": 0.54297
+    },
+    {
+      "id": "hakametsa",
+      "kind": "city",
+      "name": "Hakametsä",
+      "x": 0.73506,
+      "y": 0.52959
+    },
+    {
+      "id": "s57",
+      "kind": "step",
+      "x": 0.7704,
+      "y": 0.50293
+    },
+    {
+      "id": "s58",
+      "kind": "step",
+      "x": 0.80136,
+      "y": 0.49062
+    },
+    {
+      "id": "s59",
+      "kind": "step",
+      "x": 0.69222,
+      "y": 0.50947
+    },
+    {
+      "id": "kalevan-kirkko",
+      "kind": "city",
+      "name": "Kalevan kirkko",
+      "x": 0.66562,
+      "y": 0.47129
+    },
+    {
+      "id": "s60",
+      "kind": "step",
+      "x": 0.6498,
+      "y": 0.4332
+    },
+    {
+      "id": "s61",
+      "kind": "step",
+      "x": 0.56548,
+      "y": 0.43379
+    },
+    {
+      "id": "s62",
+      "kind": "step",
+      "x": 0.52797,
+      "y": 0.43535
+    },
+    {
+      "id": "s63",
+      "kind": "step",
+      "x": 0.49945,
+      "y": 0.44639
+    },
+    {
+      "id": "s64",
+      "kind": "step",
+      "x": 0.46276,
+      "y": 0.45762
+    },
+    {
+      "id": "s65",
+      "kind": "step",
+      "x": 0.45566,
+      "y": 0.48262
+    },
+    {
+      "id": "kauppi",
+      "kind": "city",
+      "name": "Kauppi",
+      "x": 0.43806,
+      "y": 0.52588
+    },
+    {
+      "id": "s66",
+      "kind": "step",
+      "x": 0.45839,
+      "y": 0.5709
+    },
+    {
+      "id": "s67",
+      "kind": "step",
+      "x": 0.4558,
+      "y": 0.59971
+    },
+    {
+      "id": "s68",
+      "kind": "step",
+      "x": 0.4558,
+      "y": 0.4377
+    },
+    {
+      "id": "s69",
+      "kind": "step",
+      "x": 0.44707,
+      "y": 0.41465
+    },
+    {
+      "id": "s70",
+      "kind": "step",
+      "x": 0.45389,
+      "y": 0.38926
+    },
+    {
+      "id": "tammela",
+      "kind": "city",
+      "name": "Tammela",
+      "x": 0.47285,
+      "y": 0.35977
+    },
+    {
+      "id": "s71",
+      "kind": "step",
+      "x": 0.51173,
+      "y": 0.37402
+    },
+    {
+      "id": "s72",
+      "kind": "step",
+      "x": 0.5322,
+      "y": 0.39365
+    },
+    {
+      "id": "s73",
+      "kind": "step",
+      "x": 0.55539,
+      "y": 0.40811
+    },
+    {
+      "id": "s74",
+      "kind": "step",
+      "x": 0.57094,
+      "y": 0.38574
+    },
+    {
+      "id": "s75",
+      "kind": "step",
+      "x": 0.55921,
+      "y": 0.35635
+    },
+    {
+      "id": "s76",
+      "kind": "step",
+      "x": 0.5337,
+      "y": 0.34063
+    },
+    {
+      "id": "s77",
+      "kind": "step",
+      "x": 0.50764,
+      "y": 0.32441
+    },
+    {
+      "id": "s78",
+      "kind": "step",
+      "x": 0.48363,
+      "y": 0.30869
+    },
+    {
+      "id": "s79",
+      "kind": "step",
+      "x": 0.45293,
+      "y": 0.29502
+    },
+    {
+      "id": "s80",
+      "kind": "step",
+      "x": 0.40859,
+      "y": 0.28174
+    },
+    {
+      "id": "finlayson",
+      "kind": "city",
+      "name": "Finlayson",
+      "x": 0.34884,
+      "y": 0.27305
+    },
+    {
+      "id": "s81",
+      "kind": "sea",
+      "x": 0.30259,
+      "y": 0.24961
+    },
+    {
+      "id": "s82",
+      "kind": "sea",
+      "x": 0.28608,
+      "y": 0.22168
+    },
+    {
+      "id": "s83",
+      "kind": "sea",
+      "x": 0.25239,
+      "y": 0.20498
+    },
+    {
+      "id": "s84",
+      "kind": "sea",
+      "x": 0.23124,
+      "y": 0.19687
+    },
+    {
+      "id": "laukontori",
+      "kind": "city",
+      "name": "Laukontori",
+      "x": 0.18622,
+      "y": 0.2
+    },
+    {
+      "id": "s85",
+      "kind": "step",
+      "x": 0.23465,
+      "y": 0.23594
+    },
+    {
+      "id": "s86",
+      "kind": "step",
+      "x": 0.23042,
+      "y": 0.2625
+    },
+    {
+      "id": "s87",
+      "kind": "step",
+      "x": 0.20246,
+      "y": 0.28525
+    },
+    {
+      "id": "s88",
+      "kind": "step",
+      "x": 0.17517,
+      "y": 0.30752
+    },
+    {
+      "id": "s89",
+      "kind": "step",
+      "x": 0.1442,
+      "y": 0.32529
+    },
+    {
+      "id": "s90",
+      "kind": "step",
+      "x": 0.10668,
+      "y": 0.32002
+    },
+    {
+      "id": "s91",
+      "kind": "step",
+      "x": 0.06821,
+      "y": 0.33066
+    },
+    {
+      "id": "ratina",
+      "kind": "city",
+      "name": "Ratina",
+      "x": 0.03915,
+      "y": 0.35391
+    },
+    {
+      "id": "s92",
+      "kind": "step",
+      "x": 0.09236,
+      "y": 0.36895
+    },
+    {
+      "id": "s93",
+      "kind": "step",
+      "x": 0.12251,
+      "y": 0.38496
+    },
+    {
+      "id": "s94",
+      "kind": "step",
+      "x": 0.12974,
+      "y": 0.41113
+    },
+    {
+      "id": "arboretum",
+      "kind": "city",
+      "name": "Arboretum",
+      "x": 0.07708,
+      "y": 0.4334
+    },
+    {
+      "id": "s95",
+      "kind": "step",
+      "x": 0.13506,
+      "y": 0.43506
+    },
+    {
+      "id": "s96",
+      "kind": "step",
+      "x": 0.17503,
+      "y": 0.41553
+    },
+    {
+      "id": "s97",
+      "kind": "step",
+      "x": 0.20437,
+      "y": 0.40869
+    },
+    {
+      "id": "s98",
+      "kind": "step",
+      "x": 0.20614,
+      "y": 0.42988
+    },
+    {
+      "id": "rantaperkio",
+      "kind": "city",
+      "name": "Rantaperkiö",
+      "x": 0.22497,
+      "y": 0.46797
+    },
+    {
+      "id": "s99",
+      "kind": "step",
+      "x": 0.23683,
+      "y": 0.38701
+    },
+    {
+      "id": "autokauppa-helvetti",
+      "kind": "city",
+      "name": "Autokauppa helvetti",
+      "x": 0.25034,
+      "y": 0.34893
+    },
+    {
+      "id": "s100",
+      "kind": "step",
+      "x": 0.29659,
+      "y": 0.371
+    },
+    {
+      "id": "s101",
+      "kind": "step",
+      "x": 0.32237,
+      "y": 0.39033
+    },
+    {
+      "id": "s102",
+      "kind": "step",
+      "x": 0.34134,
+      "y": 0.41504
+    },
+    {
+      "id": "s103",
+      "kind": "step",
+      "x": 0.33834,
+      "y": 0.43604
+    },
+    {
+      "id": "perensaari",
+      "kind": "city",
+      "name": "Perensaari",
+      "x": 0.33902,
+      "y": 0.47627
+    },
+    {
+      "id": "s104",
+      "kind": "step",
+      "x": 0.39263,
+      "y": 0.45986
+    },
+    {
+      "id": "s105",
+      "kind": "step",
+      "x": 0.43165,
+      "y": 0.45996
+    },
+    {
+      "id": "s106",
+      "kind": "sea",
+      "x": 0.1603,
+      "y": 0.16016
+    },
+    {
+      "id": "s107",
+      "kind": "sea",
+      "x": 0.12196,
+      "y": 0.16787
+    },
+    {
+      "id": "tammerkoski",
+      "kind": "city",
+      "name": "Tammerkoski",
+      "x": 0.07531,
+      "y": 0.1916
+    },
+    {
+      "id": "s108",
+      "kind": "sea",
+      "x": 0.02783,
+      "y": 0.22109
+    },
+    {
+      "id": "s109",
+      "kind": "sea",
+      "x": 0.01446,
+      "y": 0.25225
+    },
+    {
+      "id": "s110",
+      "kind": "sea",
+      "x": 0.00887,
+      "y": 0.28848
+    },
+    {
+      "id": "s111",
+      "kind": "sea",
+      "x": 0.01501,
+      "y": 0.31279
+    },
+    {
+      "id": "s112",
+      "kind": "sea",
+      "x": 0.01173,
+      "y": 0.39668
+    },
+    {
+      "id": "s113",
+      "kind": "sea",
+      "x": 0.0322,
+      "y": 0.41592
+    },
+    {
+      "id": "s114",
+      "kind": "sea",
+      "x": 0.01596,
+      "y": 0.42168
+    },
+    {
+      "id": "s115",
+      "kind": "sea",
+      "x": 0.01487,
+      "y": 0.45127
+    },
+    {
+      "id": "s116",
+      "kind": "sea",
+      "x": 0.01924,
+      "y": 0.48418
+    },
+    {
+      "id": "s117",
+      "kind": "sea",
+      "x": 0.0322,
+      "y": 0.51729
+    },
+    {
+      "id": "s118",
+      "kind": "sea",
+      "x": 0.04038,
+      "y": 0.54668
+    },
+    {
+      "id": "s119",
+      "kind": "sea",
+      "x": 0.06057,
+      "y": 0.57832
+    },
+    {
+      "id": "s120",
+      "kind": "sea",
+      "x": 0.08104,
+      "y": 0.60273
+    },
+    {
+      "id": "s121",
+      "kind": "sea",
+      "x": 0.1075,
+      "y": 0.63896
+    },
+    {
+      "id": "viikinsaari",
+      "kind": "city",
+      "name": "Viikinsaari",
+      "x": 0.16289,
+      "y": 0.68535
+    },
+    {
+      "id": "s122",
+      "kind": "sea",
+      "x": 0.17531,
+      "y": 0.73193
+    },
+    {
+      "id": "s123",
+      "kind": "sea",
+      "x": 0.18431,
+      "y": 0.76104
+    },
+    {
+      "id": "s124",
+      "kind": "sea",
+      "x": 0.19563,
+      "y": 0.79043
+    },
+    {
+      "id": "s125",
+      "kind": "sea",
+      "x": 0.21432,
+      "y": 0.81963
+    },
+    {
+      "id": "s126",
+      "kind": "sea",
+      "x": 0.2502,
+      "y": 0.85361
+    },
+    {
+      "id": "s127",
+      "kind": "sea",
+      "x": 0.30232,
+      "y": 0.87061
+    },
+    {
+      "id": "s128",
+      "kind": "sea",
+      "x": 0.36112,
+      "y": 0.875
+    },
+    {
+      "id": "s129",
+      "kind": "sea",
+      "x": 0.4146,
+      "y": 0.86992
+    },
+    {
+      "id": "s130",
+      "kind": "sea",
+      "x": 0.44052,
+      "y": 0.88682
+    },
+    {
+      "id": "s131",
+      "kind": "sea",
+      "x": 0.56344,
+      "y": 0.91514
+    },
+    {
+      "id": "s132",
+      "kind": "sea",
+      "x": 0.60205,
+      "y": 0.91621
+    },
+    {
+      "id": "s133",
+      "kind": "sea",
+      "x": 0.63915,
+      "y": 0.91543
+    },
+    {
+      "id": "s134",
+      "kind": "sea",
+      "x": 0.68035,
+      "y": 0.9084
+    },
+    {
+      "id": "s135",
+      "kind": "sea",
+      "x": 0.7206,
+      "y": 0.89424
+    },
+    {
+      "id": "s136",
+      "kind": "sea",
+      "x": 0.76071,
+      "y": 0.87842
+    },
+    {
+      "id": "s137",
+      "kind": "sea",
+      "x": 0.79591,
+      "y": 0.85791
+    },
+    {
+      "id": "annala",
+      "kind": "city",
+      "name": "Annala",
+      "x": 0.84652,
+      "y": 0.8249
+    },
+    {
+      "id": "s138",
+      "kind": "step",
+      "x": 0.88636,
+      "y": 0.79414
+    },
+    {
+      "id": "s139",
+      "kind": "step",
+      "x": 0.88404,
+      "y": 0.77168
+    },
+    {
+      "id": "s140",
+      "kind": "step",
+      "x": 0.88172,
+      "y": 0.74287
+    },
+    {
+      "id": "kaukajarvi",
+      "kind": "city",
+      "name": "Kaukajärvi",
+      "x": 0.95252,
+      "y": 0.73447
+    },
+    {
+      "id": "s141",
+      "kind": "sea",
+      "x": 0.97613,
+      "y": 0.69365
+    },
+    {
+      "id": "s142",
+      "kind": "sea",
+      "x": 0.99304,
+      "y": 0.65566
+    },
+    {
+      "id": "s143",
+      "kind": "sea",
+      "x": 0.99441,
+      "y": 0.62393
+    },
+    {
+      "id": "s144",
+      "kind": "sea",
+      "x": 0.99427,
+      "y": 0.58525
+    },
+    {
+      "id": "s145",
+      "kind": "sea",
+      "x": 0.99932,
+      "y": 0.55068
+    },
+    {
+      "id": "s146",
+      "kind": "sea",
+      "x": 0.99714,
+      "y": 0.51846
+    },
+    {
+      "id": "s147",
+      "kind": "sea",
+      "x": 0.99673,
+      "y": 0.48789
+    },
+    {
+      "id": "s148",
+      "kind": "sea",
+      "x": 0.98295,
+      "y": 0.49121
+    },
+    {
+      "id": "s149",
+      "kind": "sea",
+      "x": 0.97326,
+      "y": 0.52266
+    },
+    {
+      "id": "s150",
+      "kind": "sea",
+      "x": 0.95307,
+      "y": 0.55781
+    },
+    {
+      "id": "s151",
+      "kind": "sea",
+      "x": 0.93793,
+      "y": 0.5834
+    },
+    {
+      "id": "s152",
+      "kind": "sea",
+      "x": 0.91528,
+      "y": 0.6165
+    },
+    {
+      "id": "s153",
+      "kind": "sea",
+      "x": 0.89222,
+      "y": 0.63828
+    },
+    {
+      "id": "s154",
+      "kind": "sea",
+      "x": 0.86344,
+      "y": 0.66514
+    },
+    {
+      "id": "s155",
+      "kind": "sea",
+      "x": 0.91992,
+      "y": 0.42334
+    },
+    {
+      "id": "s156",
+      "kind": "sea",
+      "x": 0.88363,
+      "y": 0.41582
+    },
+    {
+      "id": "s157",
+      "kind": "sea",
+      "x": 0.86207,
+      "y": 0.39121
+    },
+    {
+      "id": "s158",
+      "kind": "sea",
+      "x": 0.83888,
+      "y": 0.3667
+    },
+    {
+      "id": "s159",
+      "kind": "sea",
+      "x": 0.78608,
+      "y": 0.30713
+    },
+    {
+      "id": "s160",
+      "kind": "sea",
+      "x": 0.76371,
+      "y": 0.27607
+    },
+    {
+      "id": "s161",
+      "kind": "sea",
+      "x": 0.73561,
+      "y": 0.25342
+    },
+    {
+      "id": "s162",
+      "kind": "sea",
+      "x": 0.59959,
+      "y": 0.19014
+    },
+    {
+      "id": "s163",
+      "kind": "sea",
+      "x": 0.56016,
+      "y": 0.17598
+    },
+    {
+      "id": "s164",
+      "kind": "sea",
+      "x": 0.52046,
+      "y": 0.17051
+    },
+    {
+      "id": "s165",
+      "kind": "sea",
+      "x": 0.48772,
+      "y": 0.16738
+    },
+    {
+      "id": "s166",
+      "kind": "sea",
+      "x": 0.3719,
+      "y": 0.14219
+    },
+    {
+      "id": "s167",
+      "kind": "sea",
+      "x": 0.32742,
+      "y": 0.13984
+    },
+    {
+      "id": "s168",
+      "kind": "sea",
+      "x": 0.08377,
+      "y": 0.47109
+    },
+    {
+      "id": "s169",
+      "kind": "sea",
+      "x": 0.10532,
+      "y": 0.49766
+    },
+    {
+      "id": "s170",
+      "kind": "sea",
+      "x": 0.14516,
+      "y": 0.50215
+    },
+    {
+      "id": "s171",
+      "kind": "sea",
+      "x": 0.19004,
+      "y": 0.50361
+    },
+    {
+      "id": "s172",
+      "kind": "sea",
+      "x": 0.2558,
+      "y": 0.50781
+    },
+    {
+      "id": "s173",
+      "kind": "sea",
+      "x": 0.30846,
+      "y": 0.52139
+    },
+    {
+      "id": "s174",
+      "kind": "sea",
+      "x": 0.33752,
+      "y": 0.52324
+    },
+    {
+      "id": "s175",
+      "kind": "sea",
+      "x": 0.34638,
+      "y": 0.54922
+    },
+    {
+      "id": "s176",
+      "kind": "sea",
+      "x": 0.35894,
+      "y": 0.58467
+    },
+    {
+      "id": "s177",
+      "kind": "sea",
+      "x": 0.37613,
+      "y": 0.60889
+    },
+    {
+      "id": "s178",
+      "kind": "sea",
+      "x": 0.3899,
+      "y": 0.66299
+    },
+    {
+      "id": "s179",
+      "kind": "sea",
+      "x": 0.36685,
+      "y": 0.69395
+    },
+    {
+      "id": "s180",
+      "kind": "sea",
+      "x": 0.37012,
+      "y": 0.71953
+    },
+    {
+      "id": "s181",
+      "kind": "sea",
+      "x": 0.38213,
+      "y": 0.75068
+    },
+    {
+      "id": "s182",
+      "kind": "sea",
+      "x": 0.40409,
+      "y": 0.8085
+    },
+    {
+      "id": "s183",
+      "kind": "sea",
+      "x": 0.39823,
+      "y": 0.84072
+    },
+    {
+      "id": "s184",
+      "kind": "sea",
+      "x": 0.80764,
+      "y": 0.74844
+    },
+    {
+      "id": "s185",
+      "kind": "sea",
+      "x": 0.80805,
+      "y": 0.78525
+    },
+    {
+      "id": "s186",
+      "kind": "step",
+      "x": 0.74543,
+      "y": 0.62617
+    },
+    {
+      "id": "s187",
+      "kind": "step",
+      "x": 0.75239,
+      "y": 0.59736
+    },
+    {
+      "id": "s188",
+      "kind": "step",
+      "x": 0.76535,
+      "y": 0.56553
+    }
+  ],
+  "edges": [
+    {
+      "a": "keskustori",
+      "b": "s1",
+      "kind": "land"
+    },
+    {
+      "a": "s1",
+      "b": "s2",
+      "kind": "land"
+    },
+    {
+      "a": "s2",
+      "b": "s3",
+      "kind": "land"
+    },
+    {
+      "a": "s3",
+      "b": "s4",
+      "kind": "land"
+    },
+    {
+      "a": "s4",
+      "b": "koskipuisto",
+      "kind": "land"
+    },
+    {
+      "a": "koskipuisto",
+      "b": "s5",
+      "kind": "land"
+    },
+    {
+      "a": "s5",
+      "b": "s6",
+      "kind": "land"
+    },
+    {
+      "a": "s6",
+      "b": "vapriikki",
+      "kind": "land"
+    },
+    {
+      "a": "vapriikki",
+      "b": "s7",
+      "kind": "land"
+    },
+    {
+      "a": "s7",
+      "b": "s8",
+      "kind": "land"
+    },
+    {
+      "a": "s8",
+      "b": "s9",
+      "kind": "land"
+    },
+    {
+      "a": "s9",
+      "b": "s10",
+      "kind": "land"
+    },
+    {
+      "a": "s10",
+      "b": "s11",
+      "kind": "land"
+    },
+    {
+      "a": "s11",
+      "b": "tulli",
+      "kind": "land"
+    },
+    {
+      "a": "tulli",
+      "b": "s12",
+      "kind": "land"
+    },
+    {
+      "a": "s12",
+      "b": "s13",
+      "kind": "land"
+    },
+    {
+      "a": "s13",
+      "b": "s14",
+      "kind": "land"
+    },
+    {
+      "a": "s14",
+      "b": "Tammelan tori",
+      "kind": "land"
+    },
+    {
+      "a": "tulli",
+      "b": "s15",
+      "kind": "land"
+    },
+    {
+      "a": "s15",
+      "b": "s16",
+      "kind": "land"
+    },
+    {
+      "a": "s16",
+      "b": "rautatieasema",
+      "kind": "land"
+    },
+    {
+      "a": "rautatieasema",
+      "b": "s17",
+      "kind": "land"
+    },
+    {
+      "a": "s17",
+      "b": "s18",
+      "kind": "land"
+    },
+    {
+      "a": "s19",
+      "b": "sorsapuisto",
+      "kind": "land"
+    },
+    {
+      "a": "sorsapuisto",
+      "b": "s20",
+      "kind": "land"
+    },
+    {
+      "a": "s20",
+      "b": "s21",
+      "kind": "land"
+    },
+    {
+      "a": "s21",
+      "b": "yliopisto-keskusta-kampus",
+      "kind": "land"
+    },
+    {
+      "a": "yliopisto-keskusta-kampus",
+      "b": "s22",
+      "kind": "land"
+    },
+    {
+      "a": "s22",
+      "b": "s23",
+      "kind": "land"
+    },
+    {
+      "a": "s23",
+      "b": "iidesjarvi",
+      "kind": "land"
+    },
+    {
+      "a": "iidesjarvi",
+      "b": "s24",
+      "kind": "land"
+    },
+    {
+      "a": "s24",
+      "b": "s25",
+      "kind": "land"
+    },
+    {
+      "a": "s25",
+      "b": "s26",
+      "kind": "land"
+    },
+    {
+      "a": "s26",
+      "b": "s27",
+      "kind": "land"
+    },
+    {
+      "a": "s27",
+      "b": "s28",
+      "kind": "land"
+    },
+    {
+      "a": "s28",
+      "b": "kalevan-prisma",
+      "kind": "land"
+    },
+    {
+      "a": "kalevan-prisma",
+      "b": "s29",
+      "kind": "land"
+    },
+    {
+      "a": "s29",
+      "b": "s30",
+      "kind": "land"
+    },
+    {
+      "a": "s30",
+      "b": "makkarajarvi",
+      "kind": "land"
+    },
+    {
+      "a": "makkarajarvi",
+      "b": "s31",
+      "kind": "land"
+    },
+    {
+      "a": "s31",
+      "b": "s32",
+      "kind": "land"
+    },
+    {
+      "a": "s32",
+      "b": "s33",
+      "kind": "land"
+    },
+    {
+      "a": "s33",
+      "b": "s34",
+      "kind": "land"
+    },
+    {
+      "a": "s34",
+      "b": "kapina",
+      "kind": "land"
+    },
+    {
+      "a": "kapina",
+      "b": "s35",
+      "kind": "land"
+    },
+    {
+      "a": "s35",
+      "b": "s36",
+      "kind": "land"
+    },
+    {
+      "a": "s36",
+      "b": "wainolat",
+      "kind": "land"
+    },
+    {
+      "a": "wainolat",
+      "b": "s37",
+      "kind": "land"
+    },
+    {
+      "a": "s37",
+      "b": "s38",
+      "kind": "land"
+    },
+    {
+      "a": "s38",
+      "b": "s39",
+      "kind": "land"
+    },
+    {
+      "a": "s39",
+      "b": "suolijarvi",
+      "kind": "land"
+    },
+    {
+      "a": "suolijarvi",
+      "b": "s40",
+      "kind": "land"
+    },
+    {
+      "a": "s40",
+      "b": "s41",
+      "kind": "land"
+    },
+    {
+      "a": "s41",
+      "b": "s42",
+      "kind": "land"
+    },
+    {
+      "a": "s42",
+      "b": "yliopisto-hervannan-kampus",
+      "kind": "land"
+    },
+    {
+      "a": "wainolat",
+      "b": "s43",
+      "kind": "land"
+    },
+    {
+      "a": "s43",
+      "b": "s33",
+      "kind": "land"
+    },
+    {
+      "a": "s32",
+      "b": "s44",
+      "kind": "land"
+    },
+    {
+      "a": "s44",
+      "b": "s45",
+      "kind": "land"
+    },
+    {
+      "a": "s45",
+      "b": "s46",
+      "kind": "land"
+    },
+    {
+      "a": "s46",
+      "b": "s47",
+      "kind": "land"
+    },
+    {
+      "a": "s47",
+      "b": "s48",
+      "kind": "land"
+    },
+    {
+      "a": "s48",
+      "b": "s49",
+      "kind": "land"
+    },
+    {
+      "a": "s49",
+      "b": "s50",
+      "kind": "land"
+    },
+    {
+      "a": "s50",
+      "b": "hervannan-vesitorni",
+      "kind": "land"
+    },
+    {
+      "a": "hervannan-vesitorni",
+      "b": "s51",
+      "kind": "land"
+    },
+    {
+      "a": "s51",
+      "b": "s52",
+      "kind": "land"
+    },
+    {
+      "a": "s52",
+      "b": "s53",
+      "kind": "land"
+    },
+    {
+      "a": "s53",
+      "b": "turtola",
+      "kind": "land"
+    },
+    {
+      "a": "s54",
+      "b": "s55",
+      "kind": "land"
+    },
+    {
+      "a": "s55",
+      "b": "s56",
+      "kind": "land"
+    },
+    {
+      "a": "s56",
+      "b": "hakametsa",
+      "kind": "land"
+    },
+    {
+      "a": "hakametsa",
+      "b": "s57",
+      "kind": "land"
+    },
+    {
+      "a": "s57",
+      "b": "s58",
+      "kind": "land"
+    },
+    {
+      "a": "s58",
+      "b": "yliopisto-keskusta-kampus",
+      "kind": "land"
+    },
+    {
+      "a": "hakametsa",
+      "b": "s59",
+      "kind": "land"
+    },
+    {
+      "a": "s59",
+      "b": "kalevan-kirkko",
+      "kind": "land"
+    },
+    {
+      "a": "kalevan-kirkko",
+      "b": "s60",
+      "kind": "land"
+    },
+    {
+      "a": "s60",
+      "b": "rautatieasema",
+      "kind": "land"
+    },
+    {
+      "a": "rautatieasema",
+      "b": "s61",
+      "kind": "land"
+    },
+    {
+      "a": "s61",
+      "b": "s62",
+      "kind": "land"
+    },
+    {
+      "a": "s62",
+      "b": "s63",
+      "kind": "land"
+    },
+    {
+      "a": "s63",
+      "b": "s64",
+      "kind": "land"
+    },
+    {
+      "a": "s64",
+      "b": "s65",
+      "kind": "land"
+    },
+    {
+      "a": "s65",
+      "b": "kauppi",
+      "kind": "land"
+    },
+    {
+      "a": "kauppi",
+      "b": "s66",
+      "kind": "land"
+    },
+    {
+      "a": "s66",
+      "b": "s67",
+      "kind": "land"
+    },
+    {
+      "a": "s67",
+      "b": "hervannan-vesitorni",
+      "kind": "land"
+    },
+    {
+      "a": "s64",
+      "b": "s68",
+      "kind": "land"
+    },
+    {
+      "a": "s68",
+      "b": "s69",
+      "kind": "land"
+    },
+    {
+      "a": "s69",
+      "b": "s70",
+      "kind": "land"
+    },
+    {
+      "a": "s70",
+      "b": "tammela",
+      "kind": "land"
+    },
+    {
+      "a": "tammela",
+      "b": "s71",
+      "kind": "land"
+    },
+    {
+      "a": "s71",
+      "b": "s72",
+      "kind": "land"
+    },
+    {
+      "a": "s72",
+      "b": "s73",
+      "kind": "land"
+    },
+    {
+      "a": "s73",
+      "b": "rautatieasema",
+      "kind": "land"
+    },
+    {
+      "a": "rautatieasema",
+      "b": "s74",
+      "kind": "land"
+    },
+    {
+      "a": "s74",
+      "b": "s75",
+      "kind": "land"
+    },
+    {
+      "a": "s75",
+      "b": "s76",
+      "kind": "land"
+    },
+    {
+      "a": "s76",
+      "b": "s77",
+      "kind": "land"
+    },
+    {
+      "a": "s77",
+      "b": "s78",
+      "kind": "land"
+    },
+    {
+      "a": "s78",
+      "b": "s79",
+      "kind": "land"
+    },
+    {
+      "a": "s79",
+      "b": "s80",
+      "kind": "land"
+    },
+    {
+      "a": "s80",
+      "b": "finlayson",
+      "kind": "land"
+    },
+    {
+      "a": "finlayson",
+      "b": "s81",
+      "kind": "land"
+    },
+    {
+      "a": "s81",
+      "b": "s82",
+      "kind": "land"
+    },
+    {
+      "a": "s82",
+      "b": "s83",
+      "kind": "land"
+    },
+    {
+      "a": "s83",
+      "b": "s84",
+      "kind": "land"
+    },
+    {
+      "a": "s84",
+      "b": "keskustori",
+      "kind": "land"
+    },
+    {
+      "a": "s84",
+      "b": "laukontori",
+      "kind": "land"
+    },
+    {
+      "a": "laukontori",
+      "b": "s85",
+      "kind": "land"
+    },
+    {
+      "a": "s85",
+      "b": "s86",
+      "kind": "land"
+    },
+    {
+      "a": "s86",
+      "b": "s87",
+      "kind": "land"
+    },
+    {
+      "a": "s87",
+      "b": "s88",
+      "kind": "land"
+    },
+    {
+      "a": "s88",
+      "b": "s89",
+      "kind": "land"
+    },
+    {
+      "a": "s89",
+      "b": "s90",
+      "kind": "land"
+    },
+    {
+      "a": "s90",
+      "b": "s91",
+      "kind": "land"
+    },
+    {
+      "a": "s91",
+      "b": "ratina",
+      "kind": "land"
+    },
+    {
+      "a": "ratina",
+      "b": "s92",
+      "kind": "land"
+    },
+    {
+      "a": "s92",
+      "b": "s93",
+      "kind": "land"
+    },
+    {
+      "a": "s93",
+      "b": "s94",
+      "kind": "land"
+    },
+    {
+      "a": "s94",
+      "b": "arboretum",
+      "kind": "land"
+    },
+    {
+      "a": "arboretum",
+      "b": "s95",
+      "kind": "land"
+    },
+    {
+      "a": "s95",
+      "b": "s96",
+      "kind": "land"
+    },
+    {
+      "a": "s96",
+      "b": "s97",
+      "kind": "land"
+    },
+    {
+      "a": "s97",
+      "b": "s98",
+      "kind": "land"
+    },
+    {
+      "a": "s98",
+      "b": "rantaperkio",
+      "kind": "land"
+    },
+    {
+      "a": "s97",
+      "b": "s99",
+      "kind": "land"
+    },
+    {
+      "a": "s99",
+      "b": "autokauppa-helvetti",
+      "kind": "land"
+    },
+    {
+      "a": "autokauppa-helvetti",
+      "b": "s100",
+      "kind": "land"
+    },
+    {
+      "a": "s100",
+      "b": "s101",
+      "kind": "land"
+    },
+    {
+      "a": "s101",
+      "b": "s102",
+      "kind": "land"
+    },
+    {
+      "a": "s102",
+      "b": "s103",
+      "kind": "land"
+    },
+    {
+      "a": "s103",
+      "b": "perensaari",
+      "kind": "land"
+    },
+    {
+      "a": "perensaari",
+      "b": "s104",
+      "kind": "land"
+    },
+    {
+      "a": "s104",
+      "b": "s105",
+      "kind": "land"
+    },
+    {
+      "a": "s105",
+      "b": "s64",
+      "kind": "land"
+    },
+    {
+      "a": "keskustori",
+      "b": "s106",
+      "kind": "sea"
+    },
+    {
+      "a": "s106",
+      "b": "s107",
+      "kind": "sea"
+    },
+    {
+      "a": "s107",
+      "b": "tammerkoski",
+      "kind": "sea"
+    },
+    {
+      "a": "tammerkoski",
+      "b": "s108",
+      "kind": "sea"
+    },
+    {
+      "a": "s108",
+      "b": "s109",
+      "kind": "sea"
+    },
+    {
+      "a": "s109",
+      "b": "s110",
+      "kind": "sea"
+    },
+    {
+      "a": "s110",
+      "b": "s111",
+      "kind": "sea"
+    },
+    {
+      "a": "s111",
+      "b": "ratina",
+      "kind": "sea"
+    },
+    {
+      "a": "ratina",
+      "b": "s112",
+      "kind": "sea"
+    },
+    {
+      "a": "s112",
+      "b": "s113",
+      "kind": "sea"
+    },
+    {
+      "a": "s113",
+      "b": "arboretum",
+      "kind": "sea"
+    },
+    {
+      "a": "s112",
+      "b": "s114",
+      "kind": "sea"
+    },
+    {
+      "a": "s114",
+      "b": "s115",
+      "kind": "sea"
+    },
+    {
+      "a": "s115",
+      "b": "s116",
+      "kind": "sea"
+    },
+    {
+      "a": "s116",
+      "b": "s117",
+      "kind": "sea"
+    },
+    {
+      "a": "s117",
+      "b": "s118",
+      "kind": "sea"
+    },
+    {
+      "a": "s118",
+      "b": "s119",
+      "kind": "sea"
+    },
+    {
+      "a": "s119",
+      "b": "s120",
+      "kind": "sea"
+    },
+    {
+      "a": "s120",
+      "b": "s121",
+      "kind": "sea"
+    },
+    {
+      "a": "s121",
+      "b": "viikinsaari",
+      "kind": "sea"
+    },
+    {
+      "a": "viikinsaari",
+      "b": "s122",
+      "kind": "sea"
+    },
+    {
+      "a": "s122",
+      "b": "s123",
+      "kind": "sea"
+    },
+    {
+      "a": "s123",
+      "b": "s124",
+      "kind": "sea"
+    },
+    {
+      "a": "s124",
+      "b": "s125",
+      "kind": "sea"
+    },
+    {
+      "a": "s125",
+      "b": "s126",
+      "kind": "sea"
+    },
+    {
+      "a": "s126",
+      "b": "s127",
+      "kind": "sea"
+    },
+    {
+      "a": "s127",
+      "b": "s128",
+      "kind": "sea"
+    },
+    {
+      "a": "s128",
+      "b": "s129",
+      "kind": "sea"
+    },
+    {
+      "a": "s129",
+      "b": "s130",
+      "kind": "sea"
+    },
+    {
+      "a": "s130",
+      "b": "yliopisto-hervannan-kampus",
+      "kind": "sea"
+    },
+    {
+      "a": "yliopisto-hervannan-kampus",
+      "b": "s131",
+      "kind": "sea"
+    },
+    {
+      "a": "s131",
+      "b": "s132",
+      "kind": "sea"
+    },
+    {
+      "a": "s132",
+      "b": "s133",
+      "kind": "sea"
+    },
+    {
+      "a": "s133",
+      "b": "s134",
+      "kind": "sea"
+    },
+    {
+      "a": "s134",
+      "b": "s135",
+      "kind": "sea"
+    },
+    {
+      "a": "s135",
+      "b": "s136",
+      "kind": "sea"
+    },
+    {
+      "a": "s136",
+      "b": "s137",
+      "kind": "sea"
+    },
+    {
+      "a": "s137",
+      "b": "annala",
+      "kind": "sea"
+    },
+    {
+      "a": "annala",
+      "b": "s138",
+      "kind": "land"
+    },
+    {
+      "a": "s138",
+      "b": "s139",
+      "kind": "land"
+    },
+    {
+      "a": "s139",
+      "b": "s140",
+      "kind": "land"
+    },
+    {
+      "a": "s140",
+      "b": "kaukajarvi",
+      "kind": "land"
+    },
+    {
+      "a": "kaukajarvi",
+      "b": "s141",
+      "kind": "sea"
+    },
+    {
+      "a": "s141",
+      "b": "s142",
+      "kind": "sea"
+    },
+    {
+      "a": "s142",
+      "b": "s143",
+      "kind": "sea"
+    },
+    {
+      "a": "s143",
+      "b": "s144",
+      "kind": "sea"
+    },
+    {
+      "a": "s144",
+      "b": "s145",
+      "kind": "sea"
+    },
+    {
+      "a": "s145",
+      "b": "s146",
+      "kind": "sea"
+    },
+    {
+      "a": "s146",
+      "b": "s147",
+      "kind": "sea"
+    },
+    {
+      "a": "s147",
+      "b": "iidesjarvi",
+      "kind": "sea"
+    },
+    {
+      "a": "iidesjarvi",
+      "b": "s148",
+      "kind": "sea"
+    },
+    {
+      "a": "s148",
+      "b": "s149",
+      "kind": "sea"
+    },
+    {
+      "a": "s149",
+      "b": "s150",
+      "kind": "sea"
+    },
+    {
+      "a": "s150",
+      "b": "s151",
+      "kind": "sea"
+    },
+    {
+      "a": "s151",
+      "b": "s152",
+      "kind": "sea"
+    },
+    {
+      "a": "s152",
+      "b": "s153",
+      "kind": "sea"
+    },
+    {
+      "a": "s153",
+      "b": "s154",
+      "kind": "sea"
+    },
+    {
+      "a": "s154",
+      "b": "makkarajarvi",
+      "kind": "sea"
+    },
+    {
+      "a": "iidesjarvi",
+      "b": "s155",
+      "kind": "sea"
+    },
+    {
+      "a": "s155",
+      "b": "s156",
+      "kind": "sea"
+    },
+    {
+      "a": "s156",
+      "b": "s157",
+      "kind": "sea"
+    },
+    {
+      "a": "s157",
+      "b": "s158",
+      "kind": "sea"
+    },
+    {
+      "a": "s158",
+      "b": "sorsapuisto",
+      "kind": "sea"
+    },
+    {
+      "a": "sorsapuisto",
+      "b": "s159",
+      "kind": "sea"
+    },
+    {
+      "a": "s159",
+      "b": "s160",
+      "kind": "sea"
+    },
+    {
+      "a": "s160",
+      "b": "s161",
+      "kind": "sea"
+    },
+    {
+      "a": "s161",
+      "b": "Tammelan tori",
+      "kind": "sea"
+    },
+    {
+      "a": "Tammelan tori",
+      "b": "s162",
+      "kind": "sea"
+    },
+    {
+      "a": "s162",
+      "b": "s163",
+      "kind": "sea"
+    },
+    {
+      "a": "s163",
+      "b": "s164",
+      "kind": "sea"
+    },
+    {
+      "a": "s164",
+      "b": "vapriikki",
+      "kind": "sea"
+    },
+    {
+      "a": "s164",
+      "b": "s165",
+      "kind": "sea"
+    },
+    {
+      "a": "s165",
+      "b": "koskipuisto",
+      "kind": "sea"
+    },
+    {
+      "a": "koskipuisto",
+      "b": "s166",
+      "kind": "sea"
+    },
+    {
+      "a": "s166",
+      "b": "s167",
+      "kind": "sea"
+    },
+    {
+      "a": "s167",
+      "b": "keskustori",
+      "kind": "sea"
+    },
+    {
+      "a": "arboretum",
+      "b": "s168",
+      "kind": "sea"
+    },
+    {
+      "a": "s168",
+      "b": "s169",
+      "kind": "sea"
+    },
+    {
+      "a": "s169",
+      "b": "s170",
+      "kind": "sea"
+    },
+    {
+      "a": "s170",
+      "b": "s171",
+      "kind": "sea"
+    },
+    {
+      "a": "s171",
+      "b": "rantaperkio",
+      "kind": "sea"
+    },
+    {
+      "a": "rantaperkio",
+      "b": "s172",
+      "kind": "sea"
+    },
+    {
+      "a": "s172",
+      "b": "s173",
+      "kind": "sea"
+    },
+    {
+      "a": "s173",
+      "b": "s174",
+      "kind": "sea"
+    },
+    {
+      "a": "s174",
+      "b": "perensaari",
+      "kind": "sea"
+    },
+    {
+      "a": "s174",
+      "b": "s175",
+      "kind": "sea"
+    },
+    {
+      "a": "s175",
+      "b": "s176",
+      "kind": "sea"
+    },
+    {
+      "a": "s176",
+      "b": "s177",
+      "kind": "sea"
+    },
+    {
+      "a": "s177",
+      "b": "hervannan-vesitorni",
+      "kind": "sea"
+    },
+    {
+      "a": "hervannan-vesitorni",
+      "b": "s178",
+      "kind": "sea"
+    },
+    {
+      "a": "s178",
+      "b": "s179",
+      "kind": "sea"
+    },
+    {
+      "a": "s179",
+      "b": "s180",
+      "kind": "sea"
+    },
+    {
+      "a": "s180",
+      "b": "s181",
+      "kind": "sea"
+    },
+    {
+      "a": "s181",
+      "b": "suolijarvi",
+      "kind": "sea"
+    },
+    {
+      "a": "suolijarvi",
+      "b": "s182",
+      "kind": "sea"
+    },
+    {
+      "a": "s182",
+      "b": "s183",
+      "kind": "sea"
+    },
+    {
+      "a": "s183",
+      "b": "s129",
+      "kind": "sea"
+    },
+    {
+      "a": "keskustori",
+      "b": "vapriikki",
+      "kind": "flight"
+    },
+    {
+      "a": "keskustori",
+      "b": "laukontori",
+      "kind": "flight"
+    },
+    {
+      "a": "laukontori",
+      "b": "arboretum",
+      "kind": "flight"
+    },
+    {
+      "a": "laukontori",
+      "b": "rantaperkio",
+      "kind": "flight"
+    },
+    {
+      "a": "rantaperkio",
+      "b": "vapriikki",
+      "kind": "flight"
+    },
+    {
+      "a": "Tammelan tori",
+      "b": "sorsapuisto",
+      "kind": "flight"
+    },
+    {
+      "a": "sorsapuisto",
+      "b": "rautatieasema",
+      "kind": "flight"
+    },
+    {
+      "a": "rautatieasema",
+      "b": "turtola",
+      "kind": "flight"
+    },
+    {
+      "a": "turtola",
+      "b": "yliopisto-hervannan-kampus",
+      "kind": "flight"
+    },
+    {
+      "a": "yliopisto-hervannan-kampus",
+      "b": "suolijarvi",
+      "kind": "flight"
+    },
+    {
+      "a": "suolijarvi",
+      "b": "hervannan-vesitorni",
+      "kind": "flight"
+    },
+    {
+      "a": "hervannan-vesitorni",
+      "b": "rantaperkio",
+      "kind": "flight"
+    },
+    {
+      "a": "rantaperkio",
+      "b": "suolijarvi",
+      "kind": "flight"
+    },
+    {
+      "a": "yliopisto-hervannan-kampus",
+      "b": "viikinsaari",
+      "kind": "flight"
+    },
+    {
+      "a": "yliopisto-hervannan-kampus",
+      "b": "annala",
+      "kind": "flight"
+    },
+    {
+      "a": "kaukajarvi",
+      "b": "yliopisto-hervannan-kampus",
+      "kind": "flight"
+    },
+    {
+      "a": "yliopisto-hervannan-kampus",
+      "b": "kapina",
+      "kind": "flight"
+    },
+    {
+      "a": "iidesjarvi",
+      "b": "hakametsa",
+      "kind": "flight"
+    },
+    {
+      "a": "hakametsa",
+      "b": "sorsapuisto",
+      "kind": "flight"
+    },
+    {
+      "a": "hakametsa",
+      "b": "kapina",
+      "kind": "flight"
+    },
+    {
+      "a": "viikinsaari",
+      "b": "arboretum",
+      "kind": "flight"
+    },
+    {
+      "a": "vapriikki",
+      "b": "rautatieasema",
+      "kind": "flight"
+    },
+    {
+      "a": "s184",
+      "b": "s185",
+      "kind": "sea"
+    },
+    {
+      "a": "s185",
+      "b": "annala",
+      "kind": "sea"
+    },
+    {
+      "a": "makkarajarvi",
+      "b": "s184",
+      "kind": "sea"
+    },
+    {
+      "a": "s19",
+      "b": "s18",
+      "kind": "sea"
+    },
+    {
+      "a": "s29",
+      "b": "s186",
+      "kind": "sea"
+    },
+    {
+      "a": "s186",
+      "b": "s187",
+      "kind": "sea"
+    },
+    {
+      "a": "s187",
+      "b": "s188",
+      "kind": "sea"
+    },
+    {
+      "a": "s188",
+      "b": "hakametsa",
+      "kind": "sea"
+    },
+    {
+      "a": "s54",
+      "b": "turtola",
+      "kind": "sea"
+    }
+  ]
+}
