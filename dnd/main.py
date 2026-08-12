@@ -60,6 +60,11 @@ def main():
 
     history = []
     while True:
+def main():
+    #
+    gameOn = True
+    history = []
+    while ( gameOn):
         #print("write message:")
         #user_input = input()
         user_input = listen_user()
