@@ -1,0 +1,53 @@
+import os
+from typing import Callable, Iterable, Type
+
+import aiohttp_security
+import aiohttp_session
+from aiohttp import web
+from aiohttp_security import SessionIdentityPolicy
+from aiohttp_session.cookie_storage import EncryptedCookieStorage
+
+from . import auth
+from .config import cfg
+from .json import PydanticJson
+from .logs import handle_async_exception
+from .typed import TypedAsyncServer
+
+runners: list[web.AppRunner] = []
+
+
+def setup_app(middlewares: Iterable[Callable] = ()) -> web.Application:
+    # We add 1 due to a bug in aiohttp uses >= instead of >. This has been fixed on master
+    # but is not part of any release
+    max_size = cfg().webserver.max_upload_size_in_bytes + 1
+    app = web.Application(middlewares=middlewares, client_max_size=max_size)
+    app["AuthzPolicy"] = auth.AuthPolicy()
+    aiohttp_security.setup(app, SessionIdentityPolicy(), app["AuthzPolicy"])
+    aiohttp_session.setup(app, EncryptedCookieStorage(auth.get_secret_token()))
+    return app
+
+
+async def setup_runner(app: web.Application, site: Type[web.BaseSite], **kwargs):
+    runner = web.AppRunner(app)
+    runners.append(runner)
+    await runner.setup()
+    s = site(runner, shutdown_timeout=5, **kwargs)
+    app.loop.set_exception_handler(handle_async_exception)
+    await s.start()
+
+
+# MAIN APP
+
+sio = TypedAsyncServer(
+    cors_allowed_origins=cfg().webserver.cors_allowed_origins,
+    json=PydanticJson,
+)
+app = setup_app()
+basepath = os.environ.get("PA_BASEPATH", "/")[1:]
+socketio_path = basepath + "socket.io"
+sio.attach(app, socketio_path=socketio_path)
+app["state"] = {}
+
+# API APP
+admin_app = web.Application()
+api_app = setup_app([auth.token_middleware])

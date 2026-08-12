@@ -1,0 +1,176 @@
+version: 2.1
+
+orbs:
+    win: circleci/windows@5.1.1
+
+jobs:
+    build-client:
+        docker:
+            - image: cimg/node:24.7.0
+
+        working_directory: ~/PlanarAlly/client
+        resource_class: large
+
+        steps:
+            - checkout:
+                  path: ~/PlanarAlly
+
+            - restore_cache:
+                  key: npm-{{ checksum "package-lock.json" }}
+                  name: Restoring npm cache
+
+            - run:
+                  name: npm install
+                  command: npm i
+
+            - save_cache:
+                  key: npm-{{ checksum "package-lock.json" }}
+                  paths:
+                      - ./node-modules
+
+            - run:
+                  name: Build artifacts
+                  command: npm run build
+
+            - persist_to_workspace:
+                  root: ../
+                  paths:
+                      - server
+
+    release-server:
+        docker:
+            - image: cibuilds/github:0.13.0
+
+        working_directory: ~/PlanarAlly
+        resource_class: large
+
+        steps:
+            - attach_workspace:
+                  at: ./
+
+            - run:
+                  name: Create tmp folder
+                  command: mkdir /tmp/archives
+
+            - run:
+                  name: Zip artifacts
+                  command: |
+                      VERSION=$(head -1 server/VERSION)
+                      zip -r /tmp/archives/planarally-bin-${VERSION}.zip server/*
+
+            - run:
+                  name: Gunzip artifacts
+                  command: |
+                      VERSION=$(head -1 server/VERSION)
+                      tar -czf /tmp/archives/planarally-bin-${VERSION}.tar.gz server/*
+
+            - when:
+                  condition:
+                      not:
+                          equal: [ci-test, << pipeline.git.branch >>]
+                  steps:
+                      - run:
+                            name: "Publish release on github"
+                            command: |
+                                VERSION=$(head -1 server/VERSION)
+                                ghr -t ${GITHUB_TOKEN} -u ${CIRCLE_PROJECT_USERNAME} -r ${CIRCLE_PROJECT_REPONAME} -c ${CIRCLE_SHA1} -replace v${VERSION} /tmp/archives
+
+    build-windows:
+        executor:
+            name: win/default
+            size: large
+
+        working_directory: ~/PlanarAlly/server
+
+        steps:
+            - attach_workspace:
+                  at: ../
+
+            - run:
+                  name: Create archives folder
+                  command: mkdir C:\Users\circleci\archives
+
+            - run:
+                  name: Create dist folder
+                  command: mkdir C:\Users\circleci\dist
+
+            - run:
+                  name: Install uv
+                  command: python -m pip install uv
+
+            - run:
+                  name: Install python dependencies
+                  command: uv sync
+
+            - run: uv add ordered-set nuitka
+
+            - run:
+                  command: uv run -m nuitka --standalone --assume-yes-for-downloads --include-data-files=VERSION=VERSION --include-data-dir=static=static --include-data-dir=templates=templates --windows-icon-from-ico=static/favicon.ico ./planarally.py
+                  no_output_timeout: 30m
+
+            - run:
+                  name: Zip artifacts
+                  command: |
+                      $VERSION=$(Get-Content -TotalCount 1 VERSION)
+                      Compress-Archive -Path .\planarally.dist -DestinationPath C:\Users\circleci\archives\planarally-windows-${VERSION}.zip
+
+            - when:
+                  condition:
+                      not:
+                          equal: ["api", << pipeline.trigger_source >>]
+                  steps:
+                      - run:
+                            name: Install ghr
+                            command: go install github.com/tcnksm/ghr@latest
+                      - run:
+                            name: Publish release on github
+                            command: |
+                                $VERSION=$(Get-Content -TotalCount 1 VERSION)
+                                ~\go\bin\ghr.exe -t $env:GITHUB_TOKEN -u $env:CIRCLE_PROJECT_USERNAME -r $env:CIRCLE_PROJECT_REPONAME -c $env:CIRCLE_SHA1 -replace v$VERSION C:\Users\circleci\archives
+
+            - when:
+                  condition:
+                      equal: ["api", << pipeline.trigger_source >>]
+                  steps:
+                      - store_artifacts:
+                            path: C:\Users\circleci\archives
+                            destination: archives
+
+workflows:
+    build:
+        jobs:
+            - build-client:
+                  filters:
+                      branches:
+                          #   only: ci-test  # MAKE SURE TO CONDITION OR RENAME UPLOADED FILES TO GITHUB!!
+                          ignore: /.*/
+                      tags:
+                          only: /^v\d+\.\d+\.\d+[-a-zA-Z0-9]*$/
+            - build-windows:
+                  # These need to be repeated for the tags for some reason
+                  filters:
+                      branches:
+                          #   only: ci-test  # MAKE SURE TO CONDITION OR RENAME UPLOADED FILES TO GITHUB!!
+                          ignore: /.*/
+                      tags:
+                          only: /^v\d+\.\d+\.\d+[-a-zA-Z0-9]*$/
+                  requires:
+                      - build-client
+            - release-server:
+                  filters:
+                      branches:
+                          #   only: ci-test  # MAKE SURE TO CONDITION OR RENAME UPLOADED FILES TO GITHUB!!
+                          ignore: /.*/
+                      tags:
+                          only: /^v\d+\.\d+\.\d+[-a-zA-Z0-9]*$/
+                  requires:
+                      - build-client
+    windows-test-build:
+        when:
+            # Only manual trigger from circle webapp
+            equal: ["api", << pipeline.trigger_source >>]
+        jobs:
+            - build-client
+            - build-windows:
+                  requires:
+                      - build-client

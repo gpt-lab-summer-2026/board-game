@@ -1,0 +1,55 @@
+<script setup lang="ts">
+import { useI18n } from "vue-i18n";
+
+const { locale, t } = useI18n({ useScope: "global" });
+
+function setLocale(newLocale: string): void {
+    locale.value = newLocale;
+    localStorage.setItem("locale", newLocale);
+}
+</script>
+
+<template>
+    <div class="box">
+        <div
+            v-for="availableLocale in $i18n.availableLocales"
+            :key="`locale-${availableLocale}`"
+            class="element"
+            :class="{ selected: locale === availableLocale }"
+            :value="availableLocale"
+            @click="setLocale(availableLocale)"
+        >
+            {{ t("locale." + availableLocale) }}
+        </div>
+    </div>
+</template>
+
+<style scoped lang="scss">
+.box {
+    display: flex;
+    flex-direction: column;
+}
+
+.element {
+    padding: 5px;
+    color: var(--pa-secondary-hover);
+    background-color: white;
+
+    &:first-of-type {
+        border-top-left-radius: 5px;
+        border-top-right-radius: 5px;
+    }
+
+    &:last-of-type {
+        border-bottom-left-radius: 5px;
+        border-bottom-right-radius: 5px;
+    }
+}
+
+.selected,
+.element:hover {
+    color: white;
+    background-color: var(--pa-secondary-hover);
+    cursor: pointer;
+}
+</style>

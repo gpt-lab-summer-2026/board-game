@@ -1,0 +1,72 @@
+import { registerSystem } from "../../../core/systems";
+import type { System } from "../../../core/systems/models";
+import type { FloorId } from "../../models/floor";
+import type { ClientSettingCategory } from "../../ui/settings/client/categories";
+
+import { uiState } from "./state";
+
+const { mutableReactive: $ } = uiState;
+
+class UiSystem implements System {
+    clear(): void {}
+
+    toggleUi(): void {
+        $.showUi = !$.showUi;
+    }
+
+    setShortcutHelp(show: boolean): void {
+        $.showShortcutHelp = show;
+    }
+
+    setActiveShapeTab(tab: string): void {
+        $.activeShapeTab = tab as typeof $.activeShapeTab;
+    }
+
+    setGhostConsole(show: boolean): void {
+        $.showGhostConsole = show;
+    }
+
+    toggleGhostConsole(): void {
+        $.showGhostConsole = !$.showGhostConsole;
+    }
+
+    toggleShortcutHelp(): void {
+        $.showShortcutHelp = !$.showShortcutHelp;
+    }
+
+    showClientSettings(show: boolean): void {
+        $.showClientSettings = show;
+    }
+
+    setClientTab(tab: ClientSettingCategory): void {
+        $.clientSettingsTab = tab;
+    }
+
+    showDmSettings(show: boolean): void {
+        $.showDmSettings = show;
+    }
+
+    showLocationSettings(location: number): void {
+        $.openedLocationSettings = location;
+    }
+
+    setAnnotationText(text: string): void {
+        $.annotationText = text;
+    }
+
+    showFloorSettings(floorId: FloorId): void {
+        $.selectedFloor = floorId;
+        $.showFloorSettings = true;
+    }
+
+    hideFloorSettings(): void {
+        $.showFloorSettings = false;
+    }
+
+    preventContextMenu(prevent: boolean): void {
+        $.preventContextMenu = prevent;
+    }
+}
+
+export const uiSystem = new UiSystem();
+registerSystem("ui", uiSystem, false, uiState);

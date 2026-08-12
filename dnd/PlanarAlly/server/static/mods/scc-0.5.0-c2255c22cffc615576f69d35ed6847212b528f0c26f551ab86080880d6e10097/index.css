@@ -1,0 +1,183 @@
+#scc[data-v-e5a4a6fb] {
+  padding: 1rem;
+  background-color: white;
+  /*
+   * Scroll inside the tab rather than growing the dialog off the screen.
+   * `height: -webkit-fill-available` used to be here; it is non-standard,
+   * behaves differently across engines, and gave the panel no upper bound at
+   * all when its container had none either.
+   */
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+#scc h3[data-v-e5a4a6fb] {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #555;
+  border-bottom: solid 1px #ddd;
+  padding-bottom: 0.25rem;
+}
+#scc .grid[data-v-e5a4a6fb] {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  column-gap: 1rem;
+  row-gap: 0.4rem;
+  align-items: center;
+}
+#scc .inline[data-v-e5a4a6fb] {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+#scc .inline input[type=number][data-v-e5a4a6fb] {
+  width: 4.5rem;
+}
+#scc .inline label[data-v-e5a4a6fb] {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+#scc input[type=text][data-v-e5a4a6fb],
+#scc input[type=number][data-v-e5a4a6fb],
+#scc select[data-v-e5a4a6fb],
+#scc textarea[data-v-e5a4a6fb] {
+  padding: 0.25rem 0.4rem;
+  border: solid 1px #bbb;
+  border-radius: 4px;
+  font: inherit;
+}
+#scc textarea[data-v-e5a4a6fb] {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+#scc button[data-v-e5a4a6fb] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.5rem;
+  border: solid 1px #bbb;
+  border-radius: 4px;
+  background-color: #f5f5f5;
+  font: inherit;
+  cursor: pointer;
+}
+#scc button[data-v-e5a4a6fb]:hover:not(:disabled) {
+  background-color: #82c8a0;
+}
+#scc button[data-v-e5a4a6fb]:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+#scc[data-v-e5a4a6fb] :focus-visible {
+  outline: solid 2px #2b6cb0;
+  outline-offset: 1px;
+}
+#scc .abilities[data-v-e5a4a6fb] {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.5rem;
+}
+#scc .abilities .ability[data-v-e5a4a6fb] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.4rem 0.2rem;
+  border: solid 1px #ddd;
+  border-radius: 6px;
+}
+#scc .abilities .ability label[data-v-e5a4a6fb] {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #555;
+}
+#scc .abilities .ability input[data-v-e5a4a6fb] {
+  width: 100%;
+  text-align: center;
+}
+#scc .abilities .ability .mod[data-v-e5a4a6fb] {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+#scc .attacks[data-v-e5a4a6fb] {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+#scc .attacks th[data-v-e5a4a6fb],
+#scc .attacks td[data-v-e5a4a6fb] {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: solid 1px #eee;
+}
+#scc .attacks thead th[data-v-e5a4a6fb] {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #777;
+}
+#scc .attacks code[data-v-e5a4a6fb] {
+  font-variant-numeric: tabular-nums;
+}
+#scc .passives[data-v-e5a4a6fb] {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+#scc .passives > li[data-v-e5a4a6fb] {
+  padding: 0.4rem 0.6rem;
+  background-color: #f5f5f5;
+  border-left: solid 3px #82c8a0;
+  border-radius: 0 4px 4px 0;
+  font-size: 0.9rem;
+}
+#scc .muted[data-v-e5a4a6fb] {
+  color: #666;
+}
+#scc .levelup[data-v-e5a4a6fb] {
+  background-color: #e8f5ee;
+  border-color: #1f7a4d;
+  color: #1f7a4d;
+  font-weight: 700;
+}
+#scc .next-up[data-v-e5a4a6fb] {
+  margin: 0;
+}
+#scc .ability .lbl[data-v-e5a4a6fb] {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #555;
+}
+#scc .ability .prof[data-v-e5a4a6fb] {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #1f7a4d;
+}
+#scc .ability.trained[data-v-e5a4a6fb] {
+  border-color: #1f7a4d;
+  background-color: #f2fbf6;
+}
+#scc .warn[data-v-e5a4a6fb] {
+  padding: 0.4rem 0.6rem;
+  background-color: #fff4e5;
+  border-left: solid 3px #d98324;
+  border-radius: 0 4px 4px 0;
+}
+#scc .small[data-v-e5a4a6fb] {
+  font-size: 0.8rem;
+  margin: 0.5rem 0 0;
+}

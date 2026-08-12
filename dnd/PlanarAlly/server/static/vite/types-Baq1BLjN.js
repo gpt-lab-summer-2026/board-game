@@ -1,0 +1,1 @@
+var e;(function(e){e[e.Unknown=0]=`Unknown`,e[e.PendingRoll=1]=`PendingRoll`,e[e.PendingEvaluation=2]=`PendingEvaluation`,e[e.Resolved=3]=`Resolved`})(e||={});function t(e,t){return e.status===t}export{t as n,e as t};

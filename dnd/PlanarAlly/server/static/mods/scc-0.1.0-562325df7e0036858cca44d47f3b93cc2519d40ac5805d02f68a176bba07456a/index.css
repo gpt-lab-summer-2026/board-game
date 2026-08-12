@@ -1,0 +1,14 @@
+#scc[data-v-a7c01998] {
+  padding: 1rem;
+  background-color: white;
+  height: -webkit-fill-available;
+  display: grid;
+  grid-template-columns: auto 1fr 1rem;
+  column-gap: 1rem;
+  row-gap: 0.3rem;
+  align-items: center;
+}
+#scc #gap[data-v-a7c01998] {
+  min-height: 0.5rem;
+  grid-column: 1/-1;
+}

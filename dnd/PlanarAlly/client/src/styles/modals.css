@@ -1,0 +1,72 @@
+/*
+ * The shared modal header.
+ *
+ * This block was copy-pasted into eleven components, and had drifted:
+ * six used #ff7052, three used #7c253e, one used `rgba(77, 0, 21)` -- which is
+ * `rgba()` given three arguments, and only renders because browsers fall back
+ * to treating it as `rgb()`. Three of the dark variants set `color: white` and
+ * one didn't, leaving dark text on a near-black maroon bar.
+ *
+ * Everything structural now lives here once. Components keep only the deltas
+ * that are genuinely theirs (a min-width, a rounded corner), and the dark
+ * variant is a `secondary` modifier rather than a re-declaration.
+ *
+ * NOTE ON SPECIFICITY: Vue scoped styles compile to `.modal-header[data-v-x]`,
+ * which outranks the bare class here. Adding this file is not enough on its own
+ * -- the per-component copies have to be deleted, or they keep winning.
+ */
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--pa-space-4);
+
+    padding: 10px;
+    padding-right: 35px; /* clearance for the absolutely-positioned close button */
+
+    /*
+     * The house maroon, which PA already uses for the location bar, is the
+     * chrome colour. The old default was #ff7052 -- the same value as
+     * --pa-danger-surface -- on every routine dialog, which spent the palette's
+     * strongest alarm colour on "Edit shape" and left nothing to say
+     * "this deletes something". Red is now a modifier, not the default.
+     */
+    background-color: var(--pa-modal-header-bg, var(--pa-secondary));
+    color: var(--pa-modal-header-fg, var(--pa-text-inverse));
+
+    font-size: 20px;
+    font-weight: bold;
+
+    /* Every one of these dialogs is draggable by its header. */
+    cursor: move;
+}
+
+/* For dialogs that confirm something destructive. */
+.modal-header.danger {
+    --pa-modal-header-bg: var(--pa-danger);
+}
+
+.header-close {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 1.75rem;
+    height: 1.75rem;
+
+    border: none;
+    border-radius: var(--pa-radius-sm);
+    background: none;
+    color: inherit;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.header-close:hover {
+    background-color: rgb(0 0 0 / 15%);
+}
