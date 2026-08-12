@@ -6,6 +6,7 @@ from streaming_tts import TextToAudioStream, KokoroEngine
 from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
 import openwakeword
 from openwakeword.model import Model
+from main import speak
 
 MODEL = WhisperModel("small", device="cpu", compute_type="int8")
 VADMODEL = load_silero_vad()
@@ -98,6 +99,7 @@ def listen_user():
             print("timestamps: ", speech_timestamps)
             if detect_wake_word(audio=audio, timestamps=speech_timestamps):
                 print("wake word detected!")
+                speak("how can i help?")
                 noWakeWord = False
     # wake word has been detected
     speech = True
@@ -118,4 +120,3 @@ def listen_user():
     text = transcribe()
     print("transcribed text: ", text)
     return text
-

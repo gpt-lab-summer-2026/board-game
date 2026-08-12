@@ -1,3 +1,8 @@
+import os
+import sys
+import tty
+import termios
+import threading
 from listen import *
 from llama_cpp import Llama
 
@@ -34,6 +39,27 @@ def speak(text):
     #     else:
     #         stream.feed(item).play()  # Speak
 
+def stop_program():
+    print("'x' pressed, stopping.")
+    os._exit(0)
+
+def watch_for_stop_key(key='x'):
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        while True:
+            ch = sys.stdin.read(1)
+            if ch.lower() == key:
+                stop_program()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+def main():
+    threading.Thread(target=watch_for_stop_key, daemon=True).start()
+
+    history = []
+    while True:
 def main():
     #
     gameOn = True
