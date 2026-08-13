@@ -8,16 +8,17 @@ from listen import *
 from llama_cpp import Llama
 from ghost_client import *
 import sys
-sys.path.append("../PlanarAlly/ghost")
-from commands import HELP_TEXT 
-print(HELP_TEXT)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(SCRIPT_DIR, "..", "PlanarAlly", "ghost"))
+
+from commands import HELP_TEXT, parse, ParseError
+
 MAX_HISTORY = 20
 FORMAT = '{"command": "", "source":""}'
 
 llm = Llama(
     model_path="../../models/gemma-3-4b-it-q4_k_m.gguf",
     n_ctx= 2000
-    
 )
 
 SYSTEM_PROMPT = f"""You are a command translator for a tabletop D&D game running on PlanarAlly.
@@ -54,7 +55,6 @@ Player: "yeah let's do it"
 You: yes
 """
 
-
 def llama_chat_commands(prompt, history):
     trimmed_history = history[-MAX_HISTORY:]
     response = llm.create_chat_completion(
@@ -67,38 +67,45 @@ def llama_chat_commands(prompt, history):
     print(response["choices"][0]["message"]["content"])
     return(response["choices"][0]["message"]["content"])
 
-
 def stop_program():
     print("'x' pressed, stopping.")
     os._exit(0)
 
-def watch_for_stop_key(key='x'):
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setcbreak(fd)
-        while True:
-            ch = sys.stdin.read(1)
-            if ch.lower() == key:
-                stop_program()
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+# def watch_for_stop_key(key='x'):
+#     fd = sys.stdin.fileno()
+#     old_settings = termios.tcgetattr(fd)
+#     try:
+#         tty.setcbreak(fd)
+#         while True:
+#             ch = sys.stdin.read(1)
+#             if ch.lower() == key:
+#                 stop_program()
+#     finally:
+#         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 def main():
-    threading.Thread(target=watch_for_stop_key, daemon=True).start()
+    #threading.Thread(target=watch_for_stop_key, daemon=True).start()
     #
     gameOn = True
     history = []
     while ( gameOn):
-        #print("write message:")
-        #user_input = input()
-        user_input = listen_user()
+        print("write message:")
+        user_input = input()
+        #user_input = listen_user()
 
         history.append({"role": "user", "content": user_input})
         print("history: ", history)
-        output_text = llama_chat_commands(prompt=user_input, history=history)
-        print("llama return: ", output_text)
-        # speak(output_text)
+        output_llm = llama_chat_commands(prompt=user_input, history=history)
+        print("llama return: ", output_llm)
+
+        # check output kind
+        try:
+            parse(output_llm)
+            res = postReq({"command": output_llm, "source":"voice"})
+            print(res)
+            #speak(res)
+        except ParseError:
+            speak("Unclear, try again!")
 
 if __name__=="__main__":
     main()
