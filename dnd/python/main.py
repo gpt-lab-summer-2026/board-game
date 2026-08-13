@@ -3,7 +3,7 @@ import sys
 import tty
 import termios
 import threading
-from listen import *
+from python.listen import *
 from llama_cpp import Llama
 
 MAX_HISTORY = 20

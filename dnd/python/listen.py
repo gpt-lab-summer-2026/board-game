@@ -6,7 +6,7 @@ from streaming_tts import TextToAudioStream, KokoroEngine
 from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
 import openwakeword
 from openwakeword.model import Model
-from main import speak
+from python.main import speak
 
 MODEL = WhisperModel("small", device="cpu", compute_type="int8")
 VADMODEL = load_silero_vad()

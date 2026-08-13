@@ -37,7 +37,6 @@ class AttackKind(str, Enum):
     RANGED = "ranged"
     CANTRIP = "cantrip"
 
-
 @dataclass
 class Intent:
     action: Action

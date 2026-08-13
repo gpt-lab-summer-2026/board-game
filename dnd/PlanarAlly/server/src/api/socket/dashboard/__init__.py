@@ -3,7 +3,7 @@ from ....app import sio
 from ....auth import get_authorized_user
 from ....config import cfg
 from ....state.dashboard import dashboard_state
-from ........planar.server.src.api.socket.dashboard import campaign  # noqa: F401
+from . import campaign  # noqa: F401
 
 
 @sio.on("connect", namespace=DASHBOARD_NS)
