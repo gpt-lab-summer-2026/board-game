@@ -7,3 +7,4 @@ silero-vad
 openwakeword
 llama-cpp-python
 requests
+torchcodec

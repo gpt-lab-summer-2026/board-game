@@ -1,18 +1,20 @@
+import openwakeword
 import sounddevice as sd
 from scipy.io.wavfile import write
 import numpy as np
 from faster_whisper import WhisperModel
-from streaming_tts import TextToAudioStream, KokoroEngine
+
 from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
-import openwakeword
 from openwakeword.model import Model
-from python.main import speak
+from speak import *
+
+# openwakeword.utils.download_models() # run this once when first time running the program
 
 MODEL = WhisperModel("small", device="cpu", compute_type="int8")
 VADMODEL = load_silero_vad()
-WAKEWORD_MODEL = Model()
+WAKEWORD_MODEL = Model(inference_framework="onnx")
 
-AUDIO_DEVICE = 1 # check correct device
+AUDIO_DEVICE = 1 # check correct device with 'python -m sounddevice'
 FS = 48000
 REC_PATH = "recordings/listen.wav"
 DURATION = 3
@@ -87,8 +89,8 @@ def detect_wake_word(audio, timestamps, wake_word=WAKE_WORD):
                 return True
     return False
 
-
 def listen_user():
+
     noWakeWord = True
     while noWakeWord:
         recorded = record_audio(duration=DURATION)
@@ -105,7 +107,7 @@ def listen_user():
     speech = True
     whole_audio = []
     while speech:
-        recorded = record_audio(duration=3)
+        recorded = record_audio(duration=5)
         audio = resample(audio=recorded)
         whole_audio.append(audio)
 
