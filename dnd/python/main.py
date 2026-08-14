@@ -7,7 +7,7 @@ from speak import *
 from listen import *
 from llama_cpp import Llama
 from ghost_client import *
-import sys
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(SCRIPT_DIR, "..", "PlanarAlly", "ghost"))
 

@@ -1,3 +1,5 @@
+import os
+import sys
 import openwakeword
 import sounddevice as sd
 from scipy.io.wavfile import write
@@ -5,10 +7,16 @@ import numpy as np
 from faster_whisper import WhisperModel
 from scipy.signal import resample_poly
 from math import gcd
-
 from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
 from openwakeword.model import Model
+
 from speak import *
+from ghost_client import *
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(SCRIPT_DIR, "..", "PlanarAlly", "ghost"))
+
+from commands import HELP_TEXT
 
 # openwakeword.utils.download_models() # run this once when first time running the program
 
@@ -16,7 +24,7 @@ MODEL = WhisperModel("distil-small.en", device="cpu", compute_type="int8")
 VADMODEL = load_silero_vad()
 WAKEWORD_MODEL = Model(inference_framework="onnx")
 
-AUDIO_DEVICE = 1 # check correct device with 'python -m sounddevice'
+AUDIO_DEVICE = 3 # check correct device with 'python -m sounddevice'
 FS = 48000
 REC_PATH = "recordings/listen.wav"
 DURATION = 3
@@ -24,6 +32,8 @@ AUDIO_DATA = []
 WAKE_WORD = "hey_jarvis"
 FRAME_SIZE = 1280
 VAD_THRESHOLD = 0.5  # min speech probability (0-1); raise to ignore background noise
+
+
 
 def vad(threshold=VAD_THRESHOLD):
     wav = read_audio(REC_PATH)
@@ -73,14 +83,24 @@ def resample(audio, target_rate=16000):
     write(REC_PATH, target_rate, audio16k_int16) # numpy to wav
     return audio16k_int16
 
+def build_initial_prompt():
+    roster = ", ".join(CURRENT_CHARACTERS) if CURRENT_CHARACTERS else ""
+    return (
+        f"The party is {roster}. "
+        "Commands: melee attack, ranged attack, cantrip, move, walk, approach, "
+        "measure distance, duplicate, apply prone, apply poisoned, apply stunned, "
+        "clear condition, advantage, disadvantage, yes, no, help."
+    )
+
+
 def transcribe():
     # transcribe the audio currently written to REC_PATH
     print("transcribing")
     segments, _ = MODEL.transcribe(
         REC_PATH,
         condition_on_previous_text=False,
-        temperature=0.0,
-        language="en"
+        language="en",
+        # initial_prompt=build_initial_prompt() # prompt kinda brakes whisper, TODO fix this
     )
     text = "".join(segment.text for segment in segments).strip().rstrip(".!?,;:")
     return text
@@ -99,6 +119,8 @@ def detect_wake_word(audio, timestamps, wake_word=WAKE_WORD):
     return False
 
 def listen_user():
+    global CURRENT_CHARACTERS
+    CURRENT_CHARACTERS = getReq()
 
     noWakeWord = True
     while noWakeWord:
