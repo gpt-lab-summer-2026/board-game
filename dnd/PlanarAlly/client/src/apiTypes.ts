@@ -520,6 +520,10 @@ export interface CharacterCreate {
   shape: GlobalId;
   name: string;
 }
+export interface CharacterRename {
+  id: CharacterId;
+  name: string;
+}
 export interface ClientActiveLayerSet {
   floor: string;
   layer: string;

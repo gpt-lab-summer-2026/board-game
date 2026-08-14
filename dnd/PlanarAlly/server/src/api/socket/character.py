@@ -11,7 +11,7 @@ from ...models.access import has_ownership
 from ...models.role import Role
 from ...state.game import game_state
 from ..helpers import _send_game
-from ..models.character import CharacterCreate
+from ..models.character import CharacterCreate, CharacterRename
 
 
 @sio.on("Character.Create", namespace=GAME_NS)
@@ -52,6 +52,40 @@ async def create_character(sid: str, raw_data: Any):
             await _send_game(
                 "Character.Created",
                 char.as_pydantic(),
+                room=psid,
+            )
+
+
+@sio.on("Character.Rename", namespace=GAME_NS)
+@auth.login_required(app, sio, "game")
+async def rename_character(sid: str, raw_data: Any):
+    data = CharacterRename(**raw_data)
+
+    pr = game_state.get(sid)
+
+    character = Character.get_by_id(data.id)
+
+    if character is None:
+        logger.error("Attempt to rename unknown character")
+        return
+    elif character.campaign != pr.room:
+        logger.error("Attempt to rename character from other campaign")
+        return
+    # Only the owner and the DM can rename a character
+    elif character.owner != pr.player and pr.role != Role.DM:
+        logger.error("Attempt to rename character by player without access")
+        return
+
+    character.name = data.name
+    character.save()
+
+    shape = character.shape
+
+    for psid, ppr in game_state.get_t(room=pr.room):
+        if has_ownership(shape, ppr, edit=True):
+            await _send_game(
+                "Character.Renamed",
+                character.as_pydantic(),
                 room=psid,
             )
 

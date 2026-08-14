@@ -7,7 +7,7 @@ import { useModal } from "../../../core/plugins/modals/plugin";
 import { DropAssetInfo } from "../../dropAsset";
 import { setCenterPosition } from "../../position";
 import { characterSystem } from "../../systems/characters";
-import { sendRemoveCharacter } from "../../systems/characters/emits";
+import { sendRemoveCharacter, sendRenameCharacter } from "../../systems/characters/emits";
 import type { CharacterId } from "../../systems/characters/models";
 import { characterState } from "../../systems/characters/state";
 import { gameState } from "../../systems/game/state";
@@ -69,6 +69,15 @@ function openSheet(charId: CharacterId): void {
     activeShapeStore.setShowEditDialog(true);
 }
 
+async function rename(charId: CharacterId): Promise<void> {
+    const current = characterState.readonly.characters.get(charId)?.name ?? "";
+    const name = await modals.prompt("New character name", "Rename Character", (value) =>
+        value.trim().length > 0 ? { valid: true } : { valid: false, reason: "Name cannot be empty" },
+    );
+    if (name === undefined || name === current) return;
+    sendRenameCharacter({ id: charId, name });
+}
+
 async function remove(charId: CharacterId): Promise<void> {
     const name = characterState.readonly.characters.get(charId)?.name ?? "??";
     const confirmed = await modals.confirm("Character Removal", `Are you sure you wish to remove character ${name}?`);
@@ -103,6 +112,9 @@ async function remove(charId: CharacterId): Promise<void> {
                     @click.stop="openSheet(char)"
                 >
                     <font-awesome-icon icon="arrow-up" />
+                </button>
+                <button type="button" class="rename" title="Rename character" @click.stop="rename(char)">
+                    <font-awesome-icon icon="pencil-alt" />
                 </button>
                 <button type="button" class="remove" title="Remove character" @click.stop="remove(char)">
                     X
@@ -149,6 +161,7 @@ async function remove(charId: CharacterId): Promise<void> {
     /* Was an absolutely positioned <span>; a control that removes a
        character should be a button and reachable by keyboard. */
     .level,
+    .rename,
     .remove {
         flex: 0 0 auto;
         padding: 0.1rem 0.35rem;

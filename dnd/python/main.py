@@ -12,6 +12,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(SCRIPT_DIR, "..", "PlanarAlly", "ghost"))
 
 from commands import HELP_TEXT, parse, ParseError
+CURRENT_CHARACTERS = getReq()
 
 MAX_HISTORY = 20
 FORMAT = '{"command": "", "source":""}'
@@ -53,10 +54,14 @@ You: measure from elf to goblin
 
 Player: "yeah let's do it"
 You: yes
+
+Current players are {CURRENT_CHARACTERS}. In the input character names can be wrong, 
+choose correct character or if not sure or anything isn't similar enough, do not choose anything.
 """
 
 def llama_chat_commands(prompt, history):
     trimmed_history = history[-MAX_HISTORY:]
+    print("thinking")
     response = llm.create_chat_completion(
         messages= [
             {f"role":"system", "content": SYSTEM_PROMPT},
@@ -71,27 +76,27 @@ def stop_program():
     print("'x' pressed, stopping.")
     os._exit(0)
 
-# def watch_for_stop_key(key='x'):
-#     fd = sys.stdin.fileno()
-#     old_settings = termios.tcgetattr(fd)
-#     try:
-#         tty.setcbreak(fd)
-#         while True:
-#             ch = sys.stdin.read(1)
-#             if ch.lower() == key:
-#                 stop_program()
-#     finally:
-#         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+def watch_for_stop_key(key='x'):
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        while True:
+            ch = sys.stdin.read(1)
+            if ch.lower() == key:
+                stop_program()
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 def main():
-    #threading.Thread(target=watch_for_stop_key, daemon=True).start()
+    threading.Thread(target=watch_for_stop_key, daemon=True).start()
     #
     gameOn = True
     history = []
     while ( gameOn):
-        print("write message:")
-        user_input = input()
-        #user_input = listen_user()
+        # print("write message:")
+        # user_input = input()
+        user_input = listen_user()
 
         history.append({"role": "user", "content": user_input})
         print("history: ", history)
@@ -102,8 +107,7 @@ def main():
         try:
             parse(output_llm)
             res = postReq({"command": output_llm, "source":"voice"})
-            print(res)
-            #speak(res)
+            speak(res)
         except ParseError:
             speak("Unclear, try again!")
 
