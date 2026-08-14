@@ -3,6 +3,8 @@ import sounddevice as sd
 from scipy.io.wavfile import write
 import numpy as np
 from faster_whisper import WhisperModel
+from scipy.signal import resample_poly
+from math import gcd
 
 from silero_vad import load_silero_vad, read_audio, get_speech_timestamps
 from openwakeword.model import Model
@@ -10,7 +12,7 @@ from speak import *
 
 # openwakeword.utils.download_models() # run this once when first time running the program
 
-MODEL = WhisperModel("small", device="cpu", compute_type="int8")
+MODEL = WhisperModel("distil-small.en", device="cpu", compute_type="int8")
 VADMODEL = load_silero_vad()
 WAKEWORD_MODEL = Model(inference_framework="onnx")
 
@@ -55,12 +57,18 @@ def record_audio(duration):
 def resample(audio, target_rate=16000):
     # resample to 16k
     print("resampling")
-    audio_f = np.asarray(audio).flatten()
-    new_len = int(len(audio_f) * target_rate / FS)
-    old_idx = np.linspace(0, len(audio_f) - 1, new_len)
-    audio_float32 = audio_f.astype(np.float32, order='C') / 32767
-    audio16k = np.interp(old_idx, np.arange(len(audio_float32)), audio_float32)
-    audio16k_int16 = (audio16k * 32767).astype(np.int16)
+    # audio_f = np.asarray(audio).flatten()
+    # new_len = int(len(audio_f) * target_rate / FS)
+    # old_idx = np.linspace(0, len(audio_f) - 1, new_len)
+    # audio_float32 = audio_f.astype(np.float32, order='C') / 32767
+    # audio16k = np.interp(old_idx, np.arange(len(audio_float32)), audio_float32)
+    # audio16k_int16 = (audio16k * 32767).astype(np.int16)
+    
+    g = gcd(FS, target_rate)
+    up, down = target_rate // g, FS // g
+    audio_norm = audio.astype(np.float32) / 32768.0
+    audio_float32 = resample_poly(audio_norm, up, down)
+    audio16k_int16 = (np.clip(audio_float32, -1.0, 1.0) * 32767).astype("int16")
 
     write(REC_PATH, target_rate, audio16k_int16) # numpy to wav
     return audio16k_int16
@@ -72,6 +80,7 @@ def transcribe():
         REC_PATH,
         condition_on_previous_text=False,
         temperature=0.0,
+        language="en"
     )
     text = "".join(segment.text for segment in segments).strip().rstrip(".!?,;:")
     return text
@@ -122,3 +131,5 @@ def listen_user():
     text = transcribe()
     print("transcribed text: ", text)
     return text
+
+listen_user()
