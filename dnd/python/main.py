@@ -14,15 +14,17 @@ sys.path.append(os.path.join(SCRIPT_DIR, "..", "PlanarAlly", "ghost"))
 from commands import HELP_TEXT, parse, ParseError
 CURRENT_CHARACTERS = getReq()
 
-MAX_HISTORY = 20
+MAX_HISTORY = 7
 FORMAT = '{"command": "", "source":""}'
 
 llm = Llama(
     model_path="../../models/gemma-3-4b-it-q4_k_m.gguf",
-    n_ctx= 2000
+    n_ctx= 2000,
+    n_gpu_layers=-1,  # offload all layers to Metal, at least works in mac
+    
 )
 
-SYSTEM_PROMPT = f"""You are a command translator for a tabletop D&D game running on PlanarAlly.
+SYSTEM_PROMPT_COMMANDS = f"""You are a command translator for a tabletop D&D game running on PlanarAlly.
 A player will describe what they want to do, in their own words. Your only job
 is to rewrite what they said into exactly one command line, using a shape from
 the list below and the real names the player mentioned. Output nothing except
@@ -59,14 +61,32 @@ Current players are {CURRENT_CHARACTERS}. In the input character names can be wr
 choose correct character or if not sure or anything isn't similar enough, do not choose anything.
 """
 
-def llama_chat_commands(prompt, history):
+SYSTEM_PROMPT_NARRATION = """You are a narrator for a tabletop D&D game running on PlanarAlly. You get moves from Planar ALly
+and your job is to create a short narration of it. Response maximum of two sentences."""
+
+def llama_chat_commands(history):
     trimmed_history = history[-MAX_HISTORY:]
     print("thinking")
     response = llm.create_chat_completion(
         messages= [
-            {f"role":"system", "content": SYSTEM_PROMPT},
+            {f"role":"system", "content": SYSTEM_PROMPT_COMMANDS},
             *trimmed_history
-        ]
+        ],
+        max_tokens = 20,
+    )
+    history.append({"role": "assistant", "content": response["choices"][0]["message"]["content"]})
+    print(response["choices"][0]["message"]["content"])
+    return(response["choices"][0]["message"]["content"])
+
+def llama_chat_narration(history):
+    trimmed_history = history[-MAX_HISTORY:]
+    print("thinking")
+    response = llm.create_chat_completion(
+        messages= [
+            {f"role":"system", "content": SYSTEM_PROMPT_NARRATION},
+            *trimmed_history
+        ],
+        max_tokens = 20,
     )
     history.append({"role": "assistant", "content": response["choices"][0]["message"]["content"]})
     print(response["choices"][0]["message"]["content"])
@@ -100,14 +120,16 @@ def main():
 
         history.append({"role": "user", "content": user_input})
         print("history: ", history)
-        output_llm = llama_chat_commands(prompt=user_input, history=history)
+        output_llm = llama_chat_commands(history=history)
         print("llama return: ", output_llm)
 
         # check output kind
         try:
             parse(output_llm)
             res = postReq({"command": output_llm, "source":"voice"})
-            speak(res)
+            narration = llama_chat_narration(history=history)
+            print(narration)
+            speak(narration)
         except ParseError:
             speak("Unclear, try again!")
 

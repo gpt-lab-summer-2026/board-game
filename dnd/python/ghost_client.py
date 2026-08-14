@@ -20,4 +20,4 @@ def getReq():
     # return list of characters
     return res.json()["characters"]
 
-postReq({"command": "elf ranged attack on emo", "source":"voice "})
+#postReq({"command": "elf ranged attack on emo", "source":"voice "})
