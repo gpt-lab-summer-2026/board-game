@@ -1,3 +1,3 @@
-from .....planar.server.src import config
+from . import config
 
 __all__ = ["config"]

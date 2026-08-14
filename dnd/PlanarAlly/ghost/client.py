@@ -302,6 +302,45 @@ class GhostClient:
             self.state.character_ids = {c["name"]: c["id"] for c in entries if "id" in c}
             log.info("characters: %s", ", ".join(sorted(self.state.characters)) or "none")
 
+        @self.sio.on("Character.Created", namespace=ns)
+        async def character_created(data):
+            # Characters.Set only fires once, at full location load -- a
+            # character created afterwards would otherwise never be found by
+            # voice/console commands until the ghost reconnects.
+            name, shape_id, char_id = data.get("name"), data.get("shapeId"), data.get("id")
+            if name and shape_id:
+                self.state.characters[name] = shape_id
+            if name and char_id is not None:
+                self.state.character_ids[name] = char_id
+            log.info("character created: %s", name)
+
+        @self.sio.on("Character.Renamed", namespace=ns)
+        async def character_renamed(data):
+            # self.state.characters is keyed by name, so a rename means
+            # dropping whatever name this character id was previously known
+            # under before adding the new one -- otherwise the old name would
+            # keep resolving to the same shape forever.
+            name, shape_id, char_id = data.get("name"), data.get("shapeId"), data.get("id")
+            if char_id is None:
+                return
+            stale = [n for n, cid in self.state.character_ids.items() if cid == char_id]
+            for n in stale:
+                self.state.characters.pop(n, None)
+                self.state.character_ids.pop(n, None)
+            if name and shape_id:
+                self.state.characters[name] = shape_id
+            if name:
+                self.state.character_ids[name] = char_id
+            log.info("character renamed: %s", name)
+
+        @self.sio.on("Character.Removed", namespace=ns)
+        async def character_removed(char_id):
+            stale = [n for n, cid in self.state.character_ids.items() if cid == char_id]
+            for n in stale:
+                self.state.characters.pop(n, None)
+                self.state.character_ids.pop(n, None)
+            log.info("character removed: %s", char_id)
+
         @self.sio.on("Location.Loaded", namespace=ns)
         async def location_loaded(_data=None):
             log.info("board received: %s", self.state.summary())

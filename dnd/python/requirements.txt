@@ -1,0 +1,10 @@
+sounddevice
+scipy
+numpy
+faster-whisper
+streaming-tts
+silero-vad
+openwakeword
+llama-cpp-python
+requests
+torchcodec

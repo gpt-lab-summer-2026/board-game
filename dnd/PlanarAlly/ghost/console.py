@@ -376,6 +376,7 @@ class Console:
         app.router.add_get("/", lambda _r: web.Response(text=PAGE, content_type="text/html"))
         app.router.add_post("/command", self._on_command)
         app.router.add_get("/log", lambda _r: web.json_response({"entries": self.log}))
+        app.router.add_get("/characters", lambda _r: web.json_response({"characters": list(self.client.state.characters)}))
 
         self._runner = web.AppRunner(app)
         await self._runner.setup()

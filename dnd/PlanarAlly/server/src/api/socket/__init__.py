@@ -2,7 +2,7 @@ from .asset_manager import core
 
 
 def load_socket_commands():
-    from .......planar.server.src.api.socket import (
+    from . import (
         admin,  # noqa: F401
         asset,  # noqa: F401
         character,  # noqa: F401
