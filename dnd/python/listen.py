@@ -27,13 +27,14 @@ WAKEWORD_MODEL = Model(inference_framework="onnx")
 AUDIO_DEVICE = 3 # check correct device with 'python -m sounddevice'
 FS = 48000
 REC_PATH = "recordings/listen.wav"
-DURATION = 3
+POLL_INTERVAL_MS = 500  # how often each listening loop checks the accumulated audio so far
 AUDIO_DATA = []
 WAKE_WORD = "hey_jarvis"
 FRAME_SIZE = 1280
 VAD_THRESHOLD = 0.5  # min speech probability (0-1); raise to ignore background noise
+SILENCE_STOP_SECONDS = 1.2  # trailing silence needed to end the turn
 
-
+CURRENT_CHARACTERS = []
 
 def vad(threshold=VAD_THRESHOLD):
     wav = read_audio(REC_PATH)
@@ -49,14 +50,52 @@ def callback(indata, frames, time, status):
         print("error is callback: ", status)
     AUDIO_DATA.append(indata.copy().squeeze())
 
-def record_audio(duration):
+def record_audio():
     global AUDIO_DATA
     AUDIO_DATA = []
     try:
         with sd.InputStream(samplerate=FS, channels=1, dtype="int16", device=AUDIO_DEVICE, callback=callback):
-            print("listening")
-            sd.sleep(int(duration * 1000))
+            print("listening for wake word")
+            noWakeWord = True
+            while noWakeWord:
+                sd.sleep(POLL_INTERVAL_MS)
+                if not AUDIO_DATA:
+                    continue
+                audio = resample(audio=np.concatenate(AUDIO_DATA))
+                # get timestamps when speech detected
+                speech_timestamps = vad()
+                if speech_timestamps:
+                    print("timestamps: ", speech_timestamps)
+                    if detect_wake_word(audio=audio, timestamps=speech_timestamps):
+                        print("wake word detected!")
+                        speak("how can i help?")
+                        noWakeWord = False
 
+            # wake word has been detected -- start capturing only the command itself,
+            # not everything recorded while waiting
+            AUDIO_DATA = []
+            speech = True
+            heard_speech = False
+            last_speech_end=0.0
+            while speech:
+                print("listening speech")
+                print("speech: ", speech)
+                sd.sleep(POLL_INTERVAL_MS)
+                if not AUDIO_DATA:
+                    continue
+                audio_16k = resample(audio=np.concatenate(AUDIO_DATA))
+                # get timestamps when speech detected
+                speech_timestamps = vad()
+                print(speech_timestamps)
+                if speech_timestamps:
+                    heard_speech = True
+                    last_speech_end = speech_timestamps[-1]["end"]
+                if heard_speech:
+                    print("putting speech false")
+                    buffer_seconds = len(audio_16k) / 16000
+                    if buffer_seconds - last_speech_end >= SILENCE_STOP_SECONDS:
+                        speech = False
+                
     except Exception as e:
         print("recording failed: ", e)
 
@@ -67,12 +106,6 @@ def record_audio(duration):
 def resample(audio, target_rate=16000):
     # resample to 16k
     print("resampling")
-    # audio_f = np.asarray(audio).flatten()
-    # new_len = int(len(audio_f) * target_rate / FS)
-    # old_idx = np.linspace(0, len(audio_f) - 1, new_len)
-    # audio_float32 = audio_f.astype(np.float32, order='C') / 32767
-    # audio16k = np.interp(old_idx, np.arange(len(audio_float32)), audio_float32)
-    # audio16k_int16 = (audio16k * 32767).astype(np.int16)
     
     g = gcd(FS, target_rate)
     up, down = target_rate // g, FS // g
@@ -92,7 +125,6 @@ def build_initial_prompt():
         "clear condition, advantage, disadvantage, yes, no, help."
     )
 
-
 def transcribe():
     # transcribe the audio currently written to REC_PATH
     print("transcribing")
@@ -100,7 +132,8 @@ def transcribe():
         REC_PATH,
         condition_on_previous_text=False,
         language="en",
-        # initial_prompt=build_initial_prompt() # prompt kinda brakes whisper, TODO fix this
+        vad_filter=True,
+        #initial_prompt=build_initial_prompt(), # prompt kinda brakes whisper, TODO fix this
     )
     text = "".join(segment.text for segment in segments).strip().rstrip(".!?,;:")
     return text
@@ -122,36 +155,7 @@ def listen_user():
     global CURRENT_CHARACTERS
     CURRENT_CHARACTERS = getReq()
 
-    noWakeWord = True
-    while noWakeWord:
-        recorded = record_audio(duration=DURATION)
-        audio = resample(audio=recorded)
-        # get timestamps when speech detected
-        speech_timestamps = vad()
-        if speech_timestamps:
-            print("timestamps: ", speech_timestamps)
-            if detect_wake_word(audio=audio, timestamps=speech_timestamps):
-                print("wake word detected!")
-                speak("how can i help?")
-                noWakeWord = False
-    # wake word has been detected
-    speech = True
-    whole_audio = []
-    while speech:
-        recorded = record_audio(duration=5)
-        audio = resample(audio=recorded)
-        whole_audio.append(audio)
-
-        # get timestamps when speech detected
-        speech_timestamps = vad()
-        if not speech_timestamps:
-            speech = False
-
-    # write the full utterance (all chunks) as one file and transcribe that
-    final_audio = np.concatenate(whole_audio)
-    write(REC_PATH, 16000, final_audio)
+    record_audio()
     text = transcribe()
     print("transcribed text: ", text)
     return text
-
-listen_user()
