@@ -117,7 +117,7 @@ def main():
                 narration = llama_chat_commands(history=history)
 
             print(narration)
-            speak(narration)
+            #speak(narration)
         except ParseError:
             speak("Unclear, try again!")
 
