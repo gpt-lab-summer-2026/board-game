@@ -40,3 +40,8 @@ pnpm-debug.log*
 tampereen-tuikahdus/voice/recordings
 
 *.wav
+
+.env
+
+*.sqlite-shm
+*.sqlite-wal

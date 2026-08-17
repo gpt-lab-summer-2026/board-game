@@ -3,10 +3,15 @@ import sys
 import tty
 import termios
 import threading
+from dotenv import load_dotenv
+
 from speak import *
 from listen import *
 from llama_cpp import Llama
 from ghost_client import *
+from config import *
+
+load_dotenv()
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(SCRIPT_DIR, "..", "PlanarAlly", "ghost"))
@@ -18,58 +23,17 @@ MAX_HISTORY = 7
 FORMAT = '{"command": "", "source":""}'
 
 llm = Llama(
-    model_path="../../models/gemma-3-4b-it-q4_k_m.gguf",
+    model_path=os.getenv('MODEL_PATH'),
     n_ctx= 2000,
     n_gpu_layers=-1,  # offload all layers to Metal, at least works in mac
-    
 )
-
-SYSTEM_PROMPT_COMMANDS = f"""You are a command translator for a tabletop D&D game running on PlanarAlly.
-A player will describe what they want to do, in their own words. Your only job
-is to rewrite what they said into exactly one command line, using a shape from
-the list below and the real names the player mentioned. Output nothing except
-that one line: no explanation, no markdown, no bullet points, no quotation marks.
-
-Valid command shapes:
-{HELP_TEXT}
-
-Rules:
-- Use the exact character names the player said. Never invent, translate, or nickname them.
-- The player must say which character is acting. If they don't name one, output: unclear
-- A bare "attack" with no weapon, range, or spell named is not enough information.
-  If melee, ranged, or cantrip isn't clear from what they said, output: unclear
-- If the player is answering a yes/no question, output just "yes" or "no".
-- If nothing above matches what they said, output exactly: unclear
-
-Examples:
-Player: "elf wants to hit the goblin with a sword"
-You: elf melee attack on goblin
-
-Player: "have the ranger shoot an arrow at the orc"
-You: ranger ranged attack on orc
-
-Player: "move gobbo closer to the dragon"
-You: gobbo moves to dragon
-
-Player: "how far away is the goblin from the elf"
-You: measure from elf to goblin
-
-Player: "yeah let's do it"
-You: yes
-
-Current players are {CURRENT_CHARACTERS}. In the input character names can be wrong, 
-choose correct character or if not sure or anything isn't similar enough, do not choose anything.
-"""
-
-SYSTEM_PROMPT_NARRATION = """You are a narrator for a tabletop D&D game running on PlanarAlly. You get moves from Planar ALly
-and your job is to create a short narration of it. Response maximum of two sentences."""
 
 def llama_chat_commands(history):
     trimmed_history = history[-MAX_HISTORY:]
     print("thinking")
     response = llm.create_chat_completion(
         messages= [
-            {f"role":"system", "content": SYSTEM_PROMPT_COMMANDS},
+            {f"role":"system", "content": build_system_prompt()},
             *trimmed_history
         ],
         max_tokens = 20,
@@ -92,6 +56,29 @@ def llama_chat_narration(history):
     print(response["choices"][0]["message"]["content"])
     return(response["choices"][0]["message"]["content"])
 
+
+def cluster_chat(history):
+    cluster_url = os.getenv('cluster_url')
+    trimmed_history = history[-MAX_HISTORY:]
+    message = {
+        "model": "qwen3.6:latest",
+        "stream": False,
+        "think": False,
+        "options": {"num_ctx": 32768, "temperature": 0.2},
+        "messages": [
+        {"role": "system", "content": build_system_prompt()},
+        *trimmed_history,
+        ]
+    }
+
+    try:
+        res = postReq(cluster_url, json=message) # post to cluster, res in json
+        print(res)
+        return(res)
+    except Exception as e:
+        print("Error: ", e)
+
+
 def stop_program():
     print("'x' pressed, stopping.")
     os._exit(0)
@@ -113,6 +100,7 @@ def main():
     #
     gameOn = True
     history = []
+
     while ( gameOn):
         # print("write message:")
         # user_input = input()
@@ -120,14 +108,26 @@ def main():
 
         history.append({"role": "user", "content": user_input})
         print("history: ", history)
-        output_llm = llama_chat_commands(history=history)
-        print("llama return: ", output_llm)
+
+        if CLUSTER_CHAT:
+            output_llm = cluster_chat(history=history)
+            print("cluster return: ", output_llm)
+        else:
+            output_llm = llama_chat_commands(history=history)
+            print("llama return: ", output_llm)
 
         # check output kind
         try:
             parse(output_llm)
-            res = postReq({"command": output_llm, "source":"voice"})
-            narration = llama_chat_narration(history=history)
+            res = postReq({"command": output_llm, "source":"voice"}) #post command and response in json
+            res_move = ' '.join(res["entries"][0]["lines"])
+            print(res_move)
+
+            if CLUSTER_CHAT:
+                narration = cluster_chat(history=history)
+            else:
+                narration = llama_chat_commands(history=history)
+
             print(narration)
             speak(narration)
         except ParseError:
