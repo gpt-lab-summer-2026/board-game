@@ -38,6 +38,24 @@ MAX_COMMAND_SECONDS = 30.0  # hard cap so a stuck VAD cannot record forever
 
 MODEL = WhisperModel("distil-small.en", device="cpu", compute_type="int8")
 VADMODEL = load_silero_vad()
+WAKEWORD_MODEL = Model(inference_framework="onnx")
+
+AUDIO_DEVICE = int(os.getenv("AUDIO_DEVICE", 3)) # check correct device with 'python -m sounddevice' and set it in .env
+FS = 48000
+TARGET_FS = 16000  # what silero, openwakeword and whisper all want
+REC_PATH = os.path.join(SCRIPT_DIR, "recordings", "listen.wav")
+BLOCK_SIZE = 4800  # 100 ms at 48 kHz; large blocks survive main-thread stalls
+POLL_INTERVAL_MS = 500  # how often each listening loop checks the accumulated audio so far
+WAKE_WORD = "hey_jarvis"
+FRAME_SIZE = 1280  # openwakeword wants 80 ms int16 frames at 16 kHz
+VAD_THRESHOLD = 0.5  # min speech probability (0-1); raise to ignore background noise
+SILENCE_STOP_SECONDS = 1.2  # trailing silence needed to end the turn
+ANALYSIS_WINDOW_SECONDS = 3.0  # only this much tail audio is re-analysed per poll
+COMMAND_WAIT_SECONDS = 10.0  # give up if nothing is said after the wake word
+MAX_COMMAND_SECONDS = 30.0  # hard cap so a stuck VAD cannot record forever
+
+MODEL = WhisperModel("distil-small.en", device="cpu", compute_type="int8")
+VADMODEL = load_silero_vad()
 # Loading only the one wake word instead of all five pretrained models cuts the
 # per-frame inference cost by ~5x. Loading by path names the model after the
 # file, so ask the model object what it ended up calling it.
