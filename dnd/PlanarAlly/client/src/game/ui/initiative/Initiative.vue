@@ -32,6 +32,11 @@ import { playerSettingsState } from "../../systems/settings/players/state";
 import { uiSystem } from "../../systems/ui";
 import { ClientSettingCategory } from "../settings/client/categories";
 
+import { collectShapes } from "../shapeInventory";
+import { LayerName } from "../../models/floor";
+import { floorState } from "../../systems/floors/state";
+
+import { initiativeModifier, rollD20 } from "./autoPopulate";
 import CreateEffectDialog from "./CreateEffectDialog.vue";
 import { initiativeStore } from "./state";
 
@@ -58,6 +63,11 @@ const entryFocus = ref<{ index: number; mouseOver: boolean; focused: boolean }>(
     mouseOver: false,
     focused: false,
 });
+
+// Auto-populate: which layer gets rolled in, and a guard against a second click
+// while the sheet lookups are still in flight.
+const autoLayer = ref<LayerName>(LayerName.Tokens);
+const autoAdding = ref(false);
 
 const hasVisibleActor = computed(() => initiativeStore.state.locationData.some((actor) => canSee(actor)));
 
@@ -135,6 +145,37 @@ async function clearInitiativeValues(): Promise<void> {
     const result = await loadConfirmationDialog(t("game.ui.initiative.clear_initiatives_msg"));
     if (result) {
         initiativeStore.clearValues(true);
+    }
+}
+
+/**
+ * Roll every token on a layer into the order.
+ *
+ * Tokens already listed are skipped rather than re-rolled, so this is safe to
+ * hit again when reinforcements walk in mid-fight.
+ */
+async function addLayerToInitiative(): Promise<void> {
+    if (autoAdding.value) return;
+    autoAdding.value = true;
+    try {
+        const floorId = floorState.raw.floors[floorState.raw.floorIndex]?.id;
+        if (floorId === undefined) return;
+
+        const present = new Set(initiativeStore.state.locationData.map((a) => a.globalId));
+        const entries = collectShapes({ floorId, layers: [autoLayer.value], namedOnly: true }).filter(
+            (e) => !present.has(e.id),
+        );
+
+        // Each sheet is its own socket round-trip; fetch them together rather
+        // than making the eighth token wait on the first seven.
+        const modifiers = await Promise.all(entries.map(async (entry) => initiativeModifier(entry.id)));
+
+        for (const [i, entry] of entries.entries()) {
+            initiativeStore.addInitiative(entry.localId, false);
+            initiativeStore.setInitiative(entry.id, rollD20() + (modifiers[i] ?? 0), true);
+        }
+    } finally {
+        autoAdding.value = false;
     }
 }
 
@@ -669,6 +710,19 @@ function n(e: any): number {
                     </div>
                 </div>
                 <div id="meta-bar-dm">
+                    <!-- ROLL A WHOLE LAYER IN -->
+                    <select v-model="autoLayer" class="auto-layer-select" title="Layer to roll into initiative">
+                        <option :value="LayerName.Tokens">tokens</option>
+                        <option :value="LayerName.Dm">dm</option>
+                    </select>
+                    <div
+                        class="initiative-bar-button"
+                        :class="{ disabled: autoAdding }"
+                        title="Add every token on this layer, rolling d20 + DEX"
+                        @click="addLayerToInitiative"
+                    >
+                        <font-awesome-icon icon="dice-d20" />
+                    </div>
                     <div
                         class="initiative-bar-button"
                         :title="t('game.ui.initiative.clear_entries')"

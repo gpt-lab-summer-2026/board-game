@@ -1,6 +1,6 @@
 import sys
 
-from dnd.planar.server.src.db.all import Shape
+from src.db.all import Shape
 
 
 def run(delete: bool = False):

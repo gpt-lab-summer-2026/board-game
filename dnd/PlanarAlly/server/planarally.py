@@ -1,3 +1,3 @@
-from dnd.planar.server.src import planarserver
+from src import planarserver
 
 planarserver.main()

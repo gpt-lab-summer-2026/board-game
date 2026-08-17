@@ -28,6 +28,8 @@ interface UiState {
 
     showShortcutHelp: boolean;
     showGhostConsole: boolean;
+    showFactions: boolean;
+    showLayers: boolean;
 
     activeShapeTab: ShapeSettingCategory;
 
@@ -58,6 +60,8 @@ const state = buildState<UiState>({
 
     showShortcutHelp: false,
     showGhostConsole: false,
+    showFactions: false,
+    showLayers: false,
 
     activeShapeTab: ShapeSettingCategory.Properties,
 

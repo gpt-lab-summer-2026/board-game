@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field as dc_field
 
+from . import deathsaves
 from . import sheet
 from . import battlefield
 from .client import GhostClient
@@ -71,6 +72,13 @@ async def execute(
 
     if intent.action is Action.CONDITION:
         return await _do_condition(client, actor_uuid, intent)
+
+    if intent.action is Action.DEATH_SAVE:
+        name = _display_name(client, actor_uuid, intent.actor)
+        return Outcome(True, await deathsaves.roll_save(client, actor_uuid, name))
+
+    if intent.action is Action.HEAL:
+        return await _do_heal(client, actor_uuid, intent)
 
     target_uuid = client.state.find_shape(intent.target or "")
     if target_uuid is None:
@@ -229,6 +237,30 @@ async def _do_condition(client, target_uuid: str, intent: Intent) -> Outcome:
     return out.say("No conditions remaining.")
 
 
+async def _do_heal(client, target_uuid: str, intent: Intent) -> Outcome:
+    """Restore hit points, and bring anyone who was down back into the fight.
+
+    A bare "heal atton" gives 1 point, because the reason you say it at the
+    table is to get someone conscious and back in the order, not to pick a
+    number.
+    """
+    name = _display_name(client, target_uuid, intent.actor)
+    data = await sheet.read_sheet(client, target_uuid)
+    if data is None:
+        return Outcome(False, [f"{name} has no sheet, so there are no hit points to restore."])
+
+    hp = data["hp"]
+    amount = intent.heal_amount if intent.heal_amount is not None else 1
+    healed = min(hp["max"], max(0, hp["current"]) + amount)
+    await sheet.set_hp(client, target_uuid, current=healed)
+
+    out = Outcome(True, [f"{name} is healed {amount}, now on {healed} of {hp['max']}."])
+    if healed > 0:
+        for line in await deathsaves.on_healed(client, target_uuid, name):
+            out.say(line)
+    return out
+
+
 async def _do_duplicate(client, source_uuid: str, intent: Intent) -> Outcome:
     from . import characters
 
@@ -383,9 +415,20 @@ async def _do_attack(
         await _apply_on_hit(client, target_uuid, target_name, applied, out)
 
     if target_sheet is not None:
+        # Whether they were already down decides what this hit means: damage at
+        # 0 is an automatic death save failure, not a fresh knockdown.
+        was_down = target_sheet.get("hp", {}).get("current", 1) <= 0
+
         hp = await sheet.damage(client, target_uuid, total)
         if hp["current"] <= 0:
-            out.say(f"{target_name} drops to 0 hit points.")
+            if was_down:
+                for line in await deathsaves.on_damage_while_down(
+                    client, target_uuid, target_name, critical=crit
+                ):
+                    out.say(line)
+            else:
+                for line in await deathsaves.on_dropped_to_zero(client, target_uuid, target_name):
+                    out.say(line)
         else:
             out.say(f"{target_name} is on {hp['current']} of {hp['max']}.")
     return out

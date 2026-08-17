@@ -28,7 +28,7 @@ from ...models.initiative.option import InitiativeOptionSet
 from ...models.initiative.order import InitiativeOrderChange
 from ...models.initiative.value import InitiativeValueSet
 from ..constants import GAME_NS
-from ........planar.server.src.api.socket.initiative import effect  # noqa: F401
+from . import effect  # noqa: F401
 
 
 def sort_initiative(data, sort: int):

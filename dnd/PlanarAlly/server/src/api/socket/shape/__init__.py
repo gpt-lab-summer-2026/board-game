@@ -1,6 +1,5 @@
 from typing import Any, cast
 
-from peewee import Case
 from pydantic import TypeAdapter
 from pydantic_core import MISSING
 
@@ -48,7 +47,7 @@ from ...models.shape.position import ShapePositionUpdate, ShapesPositionUpdateLi
 from .. import initiative
 from ..constants import GAME_NS
 from ..groups import remove_group_if_empty
-from ........planar.server.src.api.socket.shape import access, custom_data, options, variants  # noqa: F401
+from . import access, custom_data, options, variants  # noqa: F401
 
 
 @sio.on("Shape.Get", namespace=GAME_NS)
@@ -105,6 +104,10 @@ async def add_shape(sid: str, raw_data: Any):
             shape.layer = layer
             shape.x = data.shape.x
             shape.y = data.shape.y
+            # A restored shape keeps the index it had when it was removed, which by
+            # now almost certainly belongs to another shape.  Append it instead, the
+            # same way create_shape and the floor/layer moves do.
+            shape.index = layer.shapes.count() if layer else 0
             shape.save()
         else:
             shape = create_shape(data.shape, layer=layer)
@@ -357,33 +360,35 @@ async def move_shape_order(sid: str, raw_data: Any):
             logger.warning(f"{pr.player.name} attempted to move a shape order on a dm layer")
             return
 
-        target = data.index
-        sign = 1 if target < shape.index else -1
-        case = Case(
-            None,
-            (
-                (Shape.index == shape.index, target),
-                (
-                    (sign * Shape.index) < (sign * shape.index),
-                    (Shape.index + (sign * 1)),
-                ),
-            ),
-            Shape.index,
-        )
-        updated = (
-            Shape.update(index=case)
-            .where((Shape.layer == layer) & ((sign * Shape.index) <= (sign * shape.index)))
-            .execute()
-        )
+        # Reorder by rewriting the layer's index sequence rather than by shifting a
+        # range of indices in SQL.  The old shift produced duplicate indices for any
+        # target other than 0 (every shape below the moved one was bumped, including
+        # those below the target), and duplicates are invisible to the client: two
+        # shapes with the same index render in whatever order the DB returns them,
+        # so a background image could surface above tokens after a refresh.
+        siblings = list(layer.shapes.order_by(Shape.index))
+        current = next((i for i, s in enumerate(siblings) if s.uuid == shape.uuid), None)
+        if current is None:
+            logger.error("Attempt to order a shape that is not on its own layer")
+            return
 
-        # Run a cheap sanity check - we can do this for free on updates where sign > 0,
-        # For sign < 0, we would need to query the total amount of shapes on the layer, which is more expensive.
-        # If this mismatch happens, some indices are duplicate or missing - re-assign the entire layer.
-        if sign > 0 and updated != shape.index + 1:
-            # Re-assign the entire layer
-            for i, s in enumerate(layer.shapes):
+        # The client derives the target from its own shape array, which can hold
+        # shapes the server does not know about (see moveShapeOrder in layer.ts).
+        target = max(0, min(data.index, len(siblings) - 1))
+
+        # Indices that were already duplicate or non-contiguous before this move get
+        # normalised below; clients need to re-fetch to agree on the repaired order.
+        was_corrupt = [s.index for s in siblings] != list(range(len(siblings)))
+
+        siblings.insert(target, siblings.pop(current))
+        for i, s in enumerate(siblings):
+            if s.index != i:
                 s.index = i
                 s.save()
+
+        data = data.model_copy(update={"index": target})
+
+        if was_corrupt:
             await _send_game("Request.Refresh", "errors.shape-order-mismatch", room=pr.active_location.get_path())
 
     await _send_game("Shape.Order.Set", data, room=pr.active_location.get_path(), skip_sid=sid)
