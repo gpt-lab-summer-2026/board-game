@@ -1,8 +1,5 @@
 import os
 import sys
-import tty
-import termios
-import threading
 from dotenv import load_dotenv
 
 from speak import *
@@ -23,7 +20,7 @@ MAX_HISTORY = 7
 FORMAT = '{"command": "", "source":""}'
 
 llm = Llama(
-    model_path=os.getenv('MODEL_PATH'),
+    model_path=os.path.normpath(os.path.join(SCRIPT_DIR, os.getenv('MODEL_PATH'))),
     n_ctx= 2000,
     n_gpu_layers=-1,  # offload all layers to Metal, at least works in mac
 )
@@ -72,38 +69,28 @@ def cluster_chat(history):
     }
 
     try:
-        res = postReq(cluster_url, json=message) # post to cluster, res in json
-        print(res)
-        return(res)
+        res = post_to_cluster(cluster_url, message) # post to cluster, res in json
+        content = res["message"]["content"]
+        history.append({"role": "assistant", "content": content})
+        return(content)
     except Exception as e:
         print("Error: ", e)
-
 
 def stop_program():
     print("'x' pressed, stopping.")
     os._exit(0)
 
-def watch_for_stop_key(key='x'):
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setcbreak(fd)
-        while True:
-            ch = sys.stdin.read(1)
-            if ch.lower() == key:
-                stop_program()
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-
 def main():
-    threading.Thread(target=watch_for_stop_key, daemon=True).start()
     #
     gameOn = True
     history = []
 
     while ( gameOn):
-        # print("write message:")
-        # user_input = input()
+        # text input
+        #print("write message:")
+        #user_input = input()
+        
+        # audio input
         user_input = listen_user()
 
         history.append({"role": "user", "content": user_input})
@@ -129,7 +116,7 @@ def main():
                 narration = llama_chat_commands(history=history)
 
             print(narration)
-            speak(narration)
+            #speak(narration)
         except ParseError:
             speak("Unclear, try again!")
 

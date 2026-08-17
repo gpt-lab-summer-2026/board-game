@@ -7,7 +7,7 @@ sys.path.append(os.path.join(SCRIPT_DIR, "..", "PlanarAlly", "ghost"))
 
 from commands import HELP_TEXT, parse, ParseError
 
-CLUSTER_CHAT = False #. true if using cluster, false if using local llama.cpp
+CLUSTER_CHAT = True #. true if using cluster, false if using local llama.cpp
 
 SYSTEM_PROMPT_NARRATION = """You are a narrator for a tabletop D&D game running on PlanarAlly. You get moves from Planar ALly
 and your job is to create a short narration of it. Response maximum of two sentences."""
