@@ -40,7 +40,7 @@ MODEL = WhisperModel("distil-small.en", device="cpu", compute_type="int8")
 VADMODEL = load_silero_vad()
 WAKEWORD_MODEL = Model(inference_framework="onnx")
 
-AUDIO_DEVICE = int(os.getenv("AUDIO_DEVICE", 3)) # check correct device with 'python -m sounddevice' and set it in .env
+AUDIO_DEVICE = int(os.getenv("AUDIO_DEVICE", 1)) # check correct device with 'python -m sounddevice' and set it in .env
 FS = 48000
 TARGET_FS = 16000  # what silero, openwakeword and whisper all want
 REC_PATH = os.path.join(SCRIPT_DIR, "recordings", "listen.wav")
