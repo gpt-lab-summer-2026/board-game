@@ -67,12 +67,42 @@ function loadPos(): Pos | null {
 
 const pos = ref<Pos | null>(loadPos());
 
-const style = computed(() =>
-    pos.value === null
-        ? // Default clear of the tool bar (bottom-right) and the menu (left).
-          { top: '6rem', right: '1.5rem' }
-        : { left: `${pos.value.left}px`, top: `${pos.value.top}px`, right: 'auto' },
-);
+// Bumped on resize so the clamp below recomputes. A stored position is only
+// valid for the window it was saved in, and windows change between
+// sessions and monitors.
+const viewport = ref({ w: window.innerWidth, h: window.innerHeight });
+function onResize(): void {
+    viewport.value = { w: window.innerWidth, h: window.innerHeight };
+}
+
+/**
+ * Keep the whole panel on screen.
+ *
+ * Not "keep a handle visible": a position restored from a wider window
+ * should come all the way back, and there is no case where leaving two
+ * thirds of the panel past the edge is what someone wanted.
+ */
+function clampPos(p: Pos): Pos {
+    const width = rootEl.value?.offsetWidth ?? 480;
+    const height = rootEl.value?.offsetHeight ?? 320;
+    return {
+        left: Math.min(Math.max(p.left, 0), Math.max(0, viewport.value.w - width)),
+        top: Math.min(Math.max(p.top, 0), Math.max(0, viewport.value.h - height)),
+    };
+}
+
+const style = computed(() => {
+    if (pos.value === null) {
+        // Default clear of the tool bar (bottom-right) and the menu (left).
+        return { top: '6rem', right: '1.5rem' };
+    }
+    // Clamp on *render*, not only while dragging. A position saved on a
+    // 2560px-wide window put the panel at left:2068 on a 1920px one --
+    // completely off-screen, with the reset button stranded on the panel
+    // itself, so there was no way back short of clearing localStorage.
+    const safe = clampPos(pos.value);
+    return { left: `${safe.left}px`, top: `${safe.top}px`, right: 'auto' };
+});
 
 let dragFrom: { x: number; y: number; left: number; top: number } | null = null;
 const rootEl = ref<HTMLDivElement | null>(null);
@@ -87,18 +117,13 @@ function startDrag(event: PointerEvent): void {
 }
 
 function onDrag(event: PointerEvent): void {
-    if (dragFrom === null || rootEl.value === null) return;
-    const box = rootEl.value.getBoundingClientRect();
-    // Clamp so it can never be dragged fully off-screen and stranded there.
-    const left = Math.min(
-        Math.max(0, dragFrom.left + event.clientX - dragFrom.x),
-        window.innerWidth - box.width,
-    );
-    const top = Math.min(
-        Math.max(0, dragFrom.top + event.clientY - dragFrom.y),
-        window.innerHeight - 40,
-    );
-    pos.value = { left, top };
+    if (dragFrom === null) return;
+    // Same clamp as the render path, so what you drag to is what gets
+    // stored and what comes back next session.
+    pos.value = clampPos({
+        left: dragFrom.left + event.clientX - dragFrom.x,
+        top: dragFrom.top + event.clientY - dragFrom.y,
+    });
 }
 
 function endDrag(): void {
@@ -197,10 +222,12 @@ onMounted(() => {
     }
     void refresh();
     timer = window.setInterval(refresh, 4000);
+    window.addEventListener("resize", onResize);
 });
 
 onBeforeUnmount(() => {
     if (timer !== undefined) window.clearInterval(timer);
+    window.removeEventListener("resize", onResize);
 });
 
 watch(visible, async (open) => {
