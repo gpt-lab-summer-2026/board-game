@@ -18,13 +18,13 @@ sys.path.append(os.path.join(SCRIPT_DIR, "..", "PlanarAlly", "ghost"))
 
 from commands import HELP_TEXT
 
-# openwakeword.utils.download_models() # run this once when first time running the program
+#openwakeword.utils.download_models() # run this once when first time running the program
 
 MODEL = WhisperModel("distil-small.en", device="cpu", compute_type="int8")
 VADMODEL = load_silero_vad()
-WAKEWORD_MODEL = Model(inference_framework="onnx")
+WAKEWORD_MODEL = Model()
 
-AUDIO_DEVICE = 3 # check correct device with 'python -m sounddevice'
+AUDIO_DEVICE = 2 # check correct device with 'python -m sounddevice'
 FS = 48000
 REC_PATH = "recordings/listen.wav"
 POLL_INTERVAL_MS = 500  # how often each listening loop checks the accumulated audio so far
