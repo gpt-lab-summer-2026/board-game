@@ -27,6 +27,19 @@ function fillDefaults(sheet: CharacterSheet): boolean {
     const base = emptySheet();
     let changed = false;
 
+    // AC became a derived value in v0.12.0. A sheet written before that has a
+    // number somebody typed and no `acOverride`, so adopt it as the override:
+    // the character keeps exactly the AC the DM last saw, and nothing silently
+    // changes because armour was introduced. Clearing the field in the editor
+    // is the deliberate act that opts a character into deriving instead.
+    //
+    // This runs before the generic pass below, which would otherwise fill
+    // `acOverride` with the default `null` and lose the old value.
+    if (sheet.acOverride === undefined) {
+        sheet.acOverride = typeof sheet.ac === "number" ? sheet.ac : null;
+        changed = true;
+    }
+
     for (const [key, value] of Object.entries(base) as [keyof CharacterSheet, unknown][]) {
         if (sheet[key] === undefined) {
             (sheet as Record<string, unknown>)[key] = value;

@@ -34,6 +34,14 @@ class UiSystem implements System {
         $.showShortcutHelp = !$.showShortcutHelp;
     }
 
+    toggleFactions(): void {
+        $.showFactions = !$.showFactions;
+    }
+
+    toggleLayers(): void {
+        $.showLayers = !$.showLayers;
+    }
+
     showClientSettings(show: boolean): void {
         $.showClientSettings = show;
     }

@@ -5,10 +5,19 @@
 // it on every save and writes the results into `sheet.derived`; the ghost player
 // reads those finished strings and rolls them. See data.ts for why.
 
-import type { Cantrip, ClassDef, Weapon } from "./catalogue";
-import { catalogue, findCantrip, findClass, findCondition, findWeapon } from "./catalogue";
-import type { AbilityKey, CharacterSheet, DerivedAttack, DerivedBlock, DerivedCantrip } from "./data";
-import { ABILITIES } from "./data";
+import type { Armour, Cantrip, ClassDef, Spell, Weapon } from "./catalogue";
+import { catalogue, findArmour, findCantrip, findClass, findCondition, findSpell, findWeapon } from "./catalogue";
+import type {
+    AbilityKey,
+    CharacterSheet,
+    DerivedAc,
+    DerivedAttack,
+    DerivedBlock,
+    DerivedCantrip,
+    DerivedSpell,
+    SlotLevel,
+} from "./data";
+import { ABILITIES, SKILLS } from "./data";
 
 /** The familiar (score - 10) / 2, rounded down -- so 8 gives -1, not 0. */
 export function abilityMod(score: number): number {
@@ -356,6 +365,146 @@ export function weaponActions(weapon: Weapon | undefined): WeaponAction[] {
     return actions;
 }
 
+/**
+ * Armour class from gear, Dexterity and whatever is temporarily helping.
+ *
+ * The Dexterity cap is the part worth getting right, and the part a stored
+ * number never expressed: light armour passes the whole modifier through, medium
+ * stops at +2, and heavy passes none at all -- which is why a plate-wearing
+ * fighter and a leather-clad rogue can land on the same AC by opposite routes.
+ *
+ * An override short-circuits everything. Monsters are usually written as "AC 15"
+ * with no statement of what that 15 is made of, and forcing a DM to reverse
+ * engineer an armour entry to type a number would be a step backwards.
+ */
+export function deriveAc(sheet: CharacterSheet): DerivedAc {
+    const armour: Armour | undefined = findArmour(sheet.equipped.armour);
+    const shield: Armour | undefined = findArmour(sheet.equipped.shield);
+    const dexMod = abilityMod(sheet.abilities.dex);
+
+    const base = armour?.baseAc ?? 10;
+    // `?? null` rather than `?? 0`: unarmoured is uncapped, not capped at zero.
+    const cap = armour === undefined ? null : armour.dexCap;
+    const dex = cap === null ? dexMod : Math.min(dexMod, cap);
+
+    const shieldBonus = shield?.baseAc ?? 0;
+
+    let modifiers = 0;
+    for (const mod of sheet.acModifiers ?? []) modifiers += mod.value;
+
+    // Too weak for your plate: 5e docks 10 feet of speed but leaves AC alone.
+    const speedPenalty =
+        armour?.strength !== undefined && sheet.abilities.str < armour.strength ? 10 : 0;
+
+    const overridden = sheet.acOverride !== null && sheet.acOverride !== undefined;
+    const derivedTotal = base + dex + shieldBonus + modifiers;
+
+    return {
+        // Modifiers still apply over an override: "AC 15" plus half cover is 17,
+        // and a DM who typed 15 did not mean to opt out of cover.
+        total: overridden ? (sheet.acOverride as number) + modifiers : derivedTotal,
+        base,
+        dex,
+        shield: shieldBonus,
+        modifiers,
+        armourName: armour?.name ?? null,
+        shieldName: shield?.name ?? null,
+        overridden,
+        speedPenalty,
+        stealthDisadvantage: armour?.stealthDisadvantage === true,
+    };
+}
+
+/**
+ * Level-1 slots for a full caster, which is all this supports.
+ *
+ * Wizard and Cleric are the only spellcasting classes in the catalogue and both
+ * progress identically at these levels: two first-level slots at 1, three at 2.
+ * A half-caster would need its own row; there isn't one, so there isn't a table.
+ */
+export function spellSlotsFor(klass: ClassDef | undefined, level: number): Record<string, SlotLevel> {
+    if (klass?.spellcastingAbility === undefined) return {};
+    const max = clampLevel(level) >= 2 ? 3 : 2;
+    return { "1": { used: 0, max } };
+}
+
+/**
+ * Merge a fresh slot table with what the character has already spent.
+ *
+ * Levelling up must not silently refill the pool -- gaining a third slot in the
+ * middle of a fight should give you one more, not undo the two you burned.
+ */
+export function reconcileSlots(
+    current: Record<string, SlotLevel> | undefined,
+    fresh: Record<string, SlotLevel>,
+): Record<string, SlotLevel> {
+    const out: Record<string, SlotLevel> = {};
+    for (const [level, slot] of Object.entries(fresh)) {
+        const used = current?.[level]?.used ?? 0;
+        out[level] = { max: slot.max, used: Math.min(used, slot.max) };
+    }
+    return out;
+}
+
+export function skillBonuses(
+    abilities: Record<AbilityKey, number>,
+    proficiency: number,
+    proficient: string[],
+): Record<string, { bonus: number; proficient: boolean; ability: AbilityKey }> {
+    const known = new Set(proficient);
+    const out: Record<string, { bonus: number; proficient: boolean; ability: AbilityKey }> = {};
+    for (const skill of SKILLS) {
+        const isProficient = known.has(skill.key);
+        out[skill.key] = {
+            ability: skill.ability,
+            proficient: isProficient,
+            bonus: abilityMod(abilities[skill.ability]) + (isProficient ? proficiency : 0),
+        };
+    }
+    return out;
+}
+
+/**
+ * A prepared spell, resolved against this character.
+ *
+ * Levelled spell damage takes no ability modifier -- the slot is the cost and
+ * the dice are the effect -- but *healing* does, which is the asymmetry most
+ * easily got wrong by copying either the weapon or the cantrip path.
+ */
+export function deriveSpell(
+    spell: Spell,
+    sheet: CharacterSheet,
+    proficiency: number,
+): DerivedSpell | null {
+    const ability = castingAbility(sheet);
+    if (ability === null) return null;
+    const mod = abilityMod(sheet.abilities[ability]);
+    const bonus = mod + proficiency;
+    const isAttack = spell.kind === "attack";
+
+    return {
+        id: spell.id,
+        name: spell.name,
+        level: spell.level,
+        kind: spell.kind,
+        range: spell.range,
+        castingTime: spell.castingTime ?? "action",
+        attack: isAttack ? d20Roll(bonus) : null,
+        attackAdvantage: isAttack ? d20Roll(bonus, "advantage") : null,
+        attackDisadvantage: isAttack ? d20Roll(bonus, "disadvantage") : null,
+        damage: spell.damage ?? null,
+        damageType: spell.damageType ?? null,
+        healing: spell.healing === undefined ? null : withModifier(spell.healing, mod),
+        save: spell.save ?? null,
+        saveDc: spell.save === undefined ? null : spellSaveDc(proficiency, mod),
+        halfOnSave: spell.halfOnSave === true,
+        area: spell.area ?? null,
+        concentration: spell.concentration === true,
+        acBonus: spell.acBonus ?? null,
+        text: spell.text,
+    };
+}
+
 export function deriveSheet(sheet: CharacterSheet): DerivedBlock {
     const proficiency = proficiencyBonus(sheet.level);
 
@@ -363,15 +512,32 @@ export function deriveSheet(sheet: CharacterSheet): DerivedBlock {
     for (const { key } of ABILITIES) mods[key] = abilityMod(sheet.abilities[key]);
 
     const ability = castingAbility(sheet);
+    const ac = deriveAc(sheet);
+
+    // Slots follow class and level, so they are reconciled here rather than
+    // being another thing the editor has to remember to update. Spent slots
+    // survive: see reconcileSlots.
+    sheet.slots = reconcileSlots(sheet.slots, spellSlotsFor(findClass(sheet.classId), sheet.level));
+
+    // `sheet.ac` is the one number the AC tracker and the ghost read, so it is
+    // kept in step here rather than at every call site that can change AC.
+    sheet.ac = ac.total;
 
     return {
         proficiency,
+        ac,
         mods,
         melee: deriveAttack(findWeapon(sheet.equipped.melee), sheet.abilities, proficiency),
         ranged: deriveAttack(findWeapon(sheet.equipped.ranged), sheet.abilities, proficiency),
         cantrip: deriveCantrip(findCantrip(sheet.equipped.cantrip), sheet, proficiency),
         spellSaveDc: ability === null ? null : spellSaveDc(proficiency, mods[ability]),
         saves: savingThrows(sheet.abilities, proficiency, findClass(sheet.classId)?.savingThrows ?? []),
+        skills: skillBonuses(sheet.abilities, proficiency, sheet.skillProficiencies ?? []),
+        spells: (sheet.spells ?? [])
+            .map((id) => findSpell(id))
+            .filter((s): s is Spell => s !== undefined)
+            .map((s) => deriveSpell(s, sheet, proficiency))
+            .filter((s): s is DerivedSpell => s !== null),
     };
 }
 

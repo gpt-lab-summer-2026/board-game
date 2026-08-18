@@ -263,6 +263,8 @@ class Console:
         self._pending: Pending | None = None
         self.log: list[dict] = []
         self._seq = 0
+        # Let the client push its own observations into this log.
+        client.on_narration = self._note
 
     async def handle(self, text: str, source: str = "text") -> Outcome:
         """Parse and run one command. The voice pipeline calls this too."""
@@ -326,6 +328,27 @@ class Console:
             return False
         log.info("reconnected")
         return True
+
+    async def _note(self, text: str) -> None:
+        """Log something the ghost noticed rather than something it was told.
+
+        Shares the log with commands so the sequence reads in the order it
+        happened -- a bonus expiring between two attacks belongs between them,
+        not in a separate list nobody is watching.
+        """
+        self._seq += 1
+        self.log.append(
+            {
+                "n": self._seq,
+                "source": "ghost",
+                "command": None,
+                "intent": None,
+                "ok": True,
+                "awaiting": False,
+                "lines": [text],
+            }
+        )
+        del self.log[:-200]
 
     def _record(self, text, source, intent, outcome: Outcome) -> Outcome:
         """Append to the combat log.

@@ -5,6 +5,8 @@ from .models.note_room import NoteRoom  # isort: skip
 from .models.note_shape import NoteShape  # isort: skip
 from .models.note_tag import NoteTag  # isort: skip
 
+from peewee import DeferredForeignKey
+
 from .base import BaseDbModel, BaseViewModel
 from .models.asset import Asset
 from .models.asset_entry import AssetEntry
@@ -110,3 +112,18 @@ ALL_VIEWS: list[type[BaseViewModel]] = [
 ]
 
 ALL_MODELS: list[type[BaseDbModel]] = ALL_NORMAL_MODELS + ALL_VIEWS
+
+# Bind any DeferredForeignKey that the import order above did not resolve.
+#
+# Peewee resolves a deferred key only while *creating* the model it points at,
+# so a key declared after its target already exists stays unresolved forever --
+# and an unresolved key has no `<name>_id` accessor and reports the wrong column
+# name, which surfaces as `AttributeError: type object 'NoteRoom' has no
+# attribute 'location_id'` or `no such column: t2.location` from any query
+# touching it. The skip-sorted imports at the top of this file are the intended
+# guard, but they only hold while nothing else imports a target model first;
+# something in the socket layer now does, which broke note filtering.
+#
+# Resolving explicitly here makes the fix independent of import order.
+for _model in ALL_MODELS:
+    DeferredForeignKey.resolve(_model)

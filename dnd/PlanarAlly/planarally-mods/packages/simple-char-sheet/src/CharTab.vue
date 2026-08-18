@@ -10,10 +10,14 @@ import {
     findCondition,
     findWeapon,
     findRace,
+    findSpell,
+    spellsForClass,
+    bodyArmour,
+    shields,
     weaponGroups,
     type Passive,
 } from "./catalogue";
-import { ABILITIES, type CharacterSheet, type StatType } from "./data";
+import { ABILITIES, SKILLS, type AcModifier, type CharacterSheet, type StatType } from "./data";
 import { api } from "./main";
 import { deletePreset, ensurePresets, getPreset, presetLibrary, savePreset, toPreset } from "./presets";
 import {
@@ -74,6 +78,59 @@ const passives = computed(() =>
 
 // Split so natural weapons (claws, bite) sit in their own group rather than
 // among the swords -- a bear isn't picking gear off a rack.
+const armourOptions = computed(() => {
+    const all = bodyArmour();
+    return {
+        worn: all.filter((a) => a.natural !== true),
+        natural: all.filter((a) => a.natural === true),
+    };
+});
+const shieldOptions = computed(() => shields());
+const ac = computed(() => data.value.derived.ac);
+
+/** A short "12 base + 2 DEX + 2 shield" line under the AC number. */
+const acBreakdown = computed(() => {
+    const a = ac.value;
+    if (a === undefined) return "";
+    const parts: string[] = [];
+    if (a.overridden) parts.push(`${data.value.acOverride} set by hand`);
+    else {
+        parts.push(`${a.base} ${a.armourName ?? "unarmoured"}`);
+        if (a.dex !== 0) parts.push(`${signed(a.dex)} DEX`);
+        if (a.shield !== 0) parts.push(`${signed(a.shield)} ${a.shieldName ?? "shield"}`);
+    }
+    for (const m of data.value.acModifiers ?? []) parts.push(`${signed(m.value)} ${m.source}`);
+    return parts.join("  ");
+});
+
+function deriveAcFromGear(): void {
+    data.value.acOverride = null;
+    save();
+}
+
+function addAcModifier(): void {
+    const mod: AcModifier = {
+        // Crypto-random rather than a counter: two clients editing the same
+        // sheet would otherwise mint the same id and delete each other's entry.
+        id: crypto.randomUUID(),
+        source: "Modifier",
+        value: 2,
+        duration: { kind: "manual" },
+    };
+    (data.value.acModifiers ??= []).push(mod);
+    save();
+}
+
+function removeAcModifier(id: string): void {
+    data.value.acModifiers = (data.value.acModifiers ?? []).filter((m) => m.id !== id);
+    save();
+}
+
+function setModifierRounds(mod: AcModifier, rounds: number): void {
+    mod.duration = rounds > 0 ? { kind: "rounds", remaining: rounds } : { kind: "manual" };
+    save();
+}
+
 const meleeWeapons = computed(() => weaponGroups("melee"));
 // Actions come from the weapon's damage type and properties, not from a
 // per-weapon list -- so every sword gets Lacerate without an entry for it.
@@ -89,6 +146,47 @@ const spellAbility = computed(() => castingAbility(data.value));
 const cantrip = computed(() => findCantrip(data.value.equipped.cantrip));
 const isCaster = computed(() => canCast(data.value));
 const cantripChoices = computed(() => availableCantrips(data.value));
+const spellChoices = computed(() => (canCast(data.value) ? spellsForClass(data.value.classId) : []));
+const preparedSpells = computed(() => derived.value.spells ?? []);
+const slotLevels = computed(() =>
+    Object.entries(data.value.slots ?? {}).map(([level, slot]) => ({ level, ...slot })),
+);
+const proficientSkills = computed(() =>
+    SKILLS.map((s) => ({ ...s, ...(derived.value.skills?.[s.key] ?? { bonus: 0, proficient: false }) })),
+);
+
+function toggleSpell(id: string, on: boolean): void {
+    const current = new Set(data.value.spells ?? []);
+    if (on) current.add(id);
+    else current.delete(id);
+    data.value.spells = [...current];
+    save();
+}
+
+function toggleSkill(key: string, on: boolean): void {
+    const current = new Set(data.value.skillProficiencies ?? []);
+    if (on) current.add(key);
+    else current.delete(key);
+    data.value.skillProficiencies = [...current];
+    save();
+}
+
+function spendSlot(level: string, delta: number): void {
+    const slot = data.value.slots?.[level];
+    if (slot === undefined) return;
+    slot.used = Math.min(slot.max, Math.max(0, slot.used + delta));
+    save();
+}
+
+function restoreSlots(): void {
+    for (const slot of Object.values(data.value.slots ?? {})) slot.used = 0;
+    save();
+}
+
+function textOf(id: string): string {
+    return findSpell(id)?.text ?? "";
+}
+
 
 // ---- conditions ------------------------------------------------------------
 
@@ -400,12 +498,69 @@ async function removePreset(): Promise<void> {
                     </button>
                 </div>
 
+                <label for="scc-armour">Armour</label>
+                <div class="inline">
+                    <select id="scc-armour" v-model="data.equipped.armour" @change="save">
+                        <option :value="null">Unarmoured</option>
+                        <optgroup label="Worn">
+                            <option v-for="a of armourOptions.worn" :key="a.id" :value="a.id">
+                                {{ a.name }} ({{ a.baseAc }}{{ a.dexCap === null ? " + DEX" : a.dexCap > 0 ? ` + DEX max ${a.dexCap}` : "" }})
+                            </option>
+                        </optgroup>
+                        <optgroup label="Natural">
+                            <option v-for="a of armourOptions.natural" :key="a.id" :value="a.id">
+                                {{ a.name }} ({{ a.baseAc }})
+                            </option>
+                        </optgroup>
+                    </select>
+                    <select v-model="data.equipped.shield" @change="save">
+                        <option :value="null">No shield</option>
+                        <option v-for="a of shieldOptions" :key="a.id" :value="a.id">
+                            {{ a.name }} ({{ signed(a.baseAc) }})
+                        </option>
+                    </select>
+                </div>
+
                 <label for="scc-ac">Armour class</label>
                 <div class="inline">
-                    <input id="scc-ac" v-model.number="data.ac" type="number" min="0" @change="save" />
+                    <output class="ac-total">{{ ac?.total ?? data.ac }}</output>
+                    <input
+                        id="scc-ac"
+                        v-model.number="data.acOverride"
+                        type="number"
+                        min="0"
+                        placeholder="derive"
+                        title="Leave empty to work AC out from armour and Dexterity"
+                        @change="save"
+                    />
+                    <button v-if="ac?.overridden" type="button" @click="deriveAcFromGear">use armour</button>
                     <label for="scc-speed" class="muted">speed</label>
                     <input id="scc-speed" v-model.number="data.speed" type="number" min="0" @change="save" />
                     <span class="muted">ft</span>
+                </div>
+                <p v-if="acBreakdown" class="muted breakdown">{{ acBreakdown }}</p>
+                <p v-if="ac?.speedPenalty" class="warn">
+                    Too weak for this armour: speed drops by {{ ac.speedPenalty }} ft.
+                </p>
+                <p v-if="ac?.stealthDisadvantage" class="muted breakdown">Disadvantage on Stealth.</p>
+
+                <label>Temporary AC</label>
+                <div class="ac-mods">
+                    <div v-for="mod of data.acModifiers ?? []" :key="mod.id" class="inline">
+                        <input v-model="mod.source" type="text" @change="save" />
+                        <input v-model.number="mod.value" type="number" class="narrow" @change="save" />
+                        <input
+                            :value="mod.duration.kind === 'rounds' ? mod.duration.remaining : 0"
+                            type="number"
+                            min="0"
+                            class="narrow"
+                            title="Rounds remaining; 0 stays until removed"
+                            @change="setModifierRounds(mod, Number(($event.target as HTMLInputElement).value))"
+                        />
+                        <span class="muted">rds</span>
+                        <button type="button" @click="removeAcModifier(mod.id)">remove</button>
+                    </div>
+                    <button type="button" @click="addAcModifier">add modifier</button>
                 </div>
             </div>
 
@@ -542,6 +697,96 @@ async function removePreset(): Promise<void> {
             <p v-if="derived.cantrip" class="muted small">
                 Cantrip damage scales with character level and takes no ability modifier.
             </p>
+
+            <template v-if="spellChoices.length > 0">
+                <label>Spell slots</label>
+                <div class="inline">
+                    <span v-for="slot of slotLevels" :key="slot.level" class="slots">
+                        <span class="muted">level {{ slot.level }}</span>
+                        <button type="button" :disabled="slot.used >= slot.max" @click="spendSlot(slot.level, 1)">
+                            spend
+                        </button>
+                        <span class="pips">
+                            <span
+                                v-for="n of slot.max"
+                                :key="n"
+                                class="slot-pip"
+                                :class="{ spent: n <= slot.used }"
+                            ></span>
+                        </span>
+                        <span class="muted">{{ slot.max - slot.used }} left</span>
+                    </span>
+                    <button type="button" @click="restoreSlots">long rest</button>
+                </div>
+
+                <label>Prepared spells</label>
+                <div class="spell-picker">
+                    <label v-for="s of spellChoices" :key="s.id" class="check">
+                        <input
+                            type="checkbox"
+                            :checked="(data.spells ?? []).includes(s.id)"
+                            @change="toggleSpell(s.id, ($event.target as HTMLInputElement).checked)"
+                        />
+                        {{ s.name }}
+                    </label>
+                </div>
+
+                <table v-if="preparedSpells.length > 0" class="attacks">
+                    <thead>
+                        <tr>
+                            <th>Spell</th>
+                            <th>Cast</th>
+                            <th>Range</th>
+                            <th>To hit / DC</th>
+                            <th>Effect</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="s of preparedSpells" :key="s.id">
+                            <th scope="row">{{ s.name }}</th>
+                            <td class="muted">{{ s.castingTime }}</td>
+                            <td>{{ s.range }}{{ s.range === "self" || s.range === "touch" ? "" : " ft" }}</td>
+                            <td>
+                                <code v-if="s.attack">{{ s.attack }}</code>
+                                <span v-else-if="s.save">DC {{ s.saveDc }} {{ s.save.toUpperCase() }}</span>
+                                <span v-else class="muted">—</span>
+                            </td>
+                            <td>
+                                <code v-if="s.damage">{{ s.damage }}</code>
+                                <span v-if="s.damage" class="muted"> {{ s.damageType }}</span>
+                                <code v-if="s.healing">{{ s.healing }}</code>
+                                <span v-if="s.healing" class="muted"> healed</span>
+                                <span v-if="s.acBonus" class="muted">+{{ s.acBonus.value }} AC</span>
+                                <span v-if="s.area" class="muted">
+                                    {{ s.area.size }} ft {{ s.area.shape }}
+                                </span>
+                                <span v-if="s.halfOnSave" class="muted"> · half on save</span>
+                                <span v-if="s.concentration" class="muted"> · concentration</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p v-for="s of preparedSpells" :key="`t-${s.id}`" class="muted small">
+                    <strong>{{ s.name }}.</strong> {{ textOf(s.id) }}
+                </p>
+            </template>
+        </section>
+
+        <section>
+            <h3>Skills</h3>
+            <p class="muted small">Tick the ones this character is proficient in.</p>
+            <div class="skill-grid">
+                <label v-for="s of proficientSkills" :key="s.key" class="check">
+                    <input
+                        type="checkbox"
+                        :checked="s.proficient"
+                        @change="toggleSkill(s.key, ($event.target as HTMLInputElement).checked)"
+                    />
+                    <span class="skill-name">{{ s.name }}</span>
+                    <code>{{ signed(s.bonus) }}</code>
+                    <span class="muted">{{ s.ability.toUpperCase() }}</span>
+                </label>
+            </div>
         </section>
 
         <section>
@@ -868,6 +1113,80 @@ async function removePreset(): Promise<void> {
 
     .muted {
         color: #666;
+    }
+
+    .ac-total {
+        min-width: 2.5rem;
+        padding: 0.15rem 0.4rem;
+        border: solid 1px #82c8a0;
+        border-radius: 4px;
+        background-color: #e8f5ee;
+        font-weight: 700;
+        text-align: center;
+    }
+
+    .breakdown {
+        margin: 0.15rem 0 0;
+        font-size: 0.8rem;
+    }
+
+    .warn {
+        margin: 0.15rem 0 0;
+        color: #7c253e;
+        font-size: 0.8rem;
+    }
+
+    .narrow {
+        width: 3.5rem;
+    }
+
+    .slots {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+
+    .pips {
+        display: inline-flex;
+        gap: 0.2rem;
+    }
+
+    .slot-pip {
+        width: 0.7rem;
+        height: 0.7rem;
+        border: solid 2px #1f7a4d;
+        border-radius: 50%;
+        background-color: #82c8a0;
+
+        &.spent {
+            background-color: transparent;
+            border-color: #bbb;
+        }
+    }
+
+    .spell-picker,
+    .skill-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+        gap: 0.2rem 0.75rem;
+    }
+
+    .check {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-weight: 400;
+
+        .skill-name {
+            flex: 1;
+        }
+    }
+
+    .ac-mods {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.3rem;
     }
 
     .levelup {

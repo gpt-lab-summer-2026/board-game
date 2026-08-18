@@ -9,6 +9,9 @@ from ghost_client import *
 from config import *
 
 load_dotenv()
+from config import *
+
+load_dotenv()
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(SCRIPT_DIR, "..", "PlanarAlly", "ghost"))
@@ -76,9 +79,7 @@ def cluster_chat(history):
     except Exception as e:
         print("Error: ", e)
 
-def stop_program():
-    print("'x' pressed, stopping.")
-    os._exit(0)
+
 
 def main():
     #

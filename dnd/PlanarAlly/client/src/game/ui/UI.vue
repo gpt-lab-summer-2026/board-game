@@ -23,6 +23,9 @@ import { initiativeStore } from "./initiative/state";
 import LocationBar from "./menu/LocationBar.vue";
 import MenuBar from "./menu/MenuBar.vue";
 import ModalStack from "./ModalStack.vue";
+import FactionPanel from "./FactionPanel.vue";
+import LayerPanel from "./LayerPanel.vue";
+import TurnOrderBar from "./TurnOrderBar.vue";
 import GhostConsole from "./GhostConsole.vue";
 import ShortcutHelp from "./ShortcutHelp.vue";
 import SelectionInfo from "./SelectionInfo.vue";
@@ -225,6 +228,9 @@ function setTempZoomDisplay(value: number): void {
         <MarkdownModal v-if="showChangelog" :title="t('game.ui.ui.new_ver_msg')" :source="changelogText" />
         <ShortcutHelp />
         <GhostConsole />
+        <FactionPanel />
+        <LayerPanel />
+        <TurnOrderBar />
         <!-- end of main modals -->
     </div>
 </template>

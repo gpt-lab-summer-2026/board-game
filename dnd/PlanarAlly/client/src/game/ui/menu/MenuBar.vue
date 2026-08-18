@@ -131,6 +131,10 @@ const openClientSettings = (): void => uiSystem.showClientSettings(!uiState.raw.
             </div>
             <!-- GHOST CONSOLE -->
             <button class="menu-accordion" @click="uiSystem.toggleGhostConsole()">Ghost console</button>
+            <!-- SIDES -->
+            <button class="menu-accordion" @click="uiSystem.toggleFactions()">Sides</button>
+            <!-- LAYERS -->
+            <button class="menu-accordion" @click="uiSystem.toggleLayers()">Layers</button>
             <!-- KEYBOARD SHORTCUTS -->
             <!-- The `?` binding is only discoverable to someone who already
                  knows about it, which is nobody on their first session. -->

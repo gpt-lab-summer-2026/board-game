@@ -137,6 +137,11 @@ export function readBackFromTrackers(shape: LocalId, sheet: CharacterSheet): boo
     if (acId !== null) {
         const tracker = trackers.get(shape, acId);
         if (tracker !== undefined && tracker.value !== sheet.ac) {
+            // Writing `sheet.ac` here would not survive: `deriveSheet` rewrites
+            // it from armour on the next save. Editing the token's AC tracker is
+            // a deliberate "this creature's AC is N", so it sets the override --
+            // the same thing typing in the AC box does.
+            sheet.acOverride = tracker.value;
             sheet.ac = tracker.value;
             changed = true;
         }
