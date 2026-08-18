@@ -23,6 +23,7 @@ from aiohttp import web
 
 from .actions import Outcome, Pending, execute
 from .client import GhostClient
+from .sheet import read_sheet as sheet_read
 from .commands import Action, ParseError, parse
 
 log = logging.getLogger(__name__)
@@ -267,11 +268,35 @@ class Console:
         client.on_narration = self._note
 
     async def handle(self, text: str, source: str = "text") -> Outcome:
-        """Parse and run one command. The voice pipeline calls this too."""
+        """Parse and run one command. The voice pipeline calls this too.
+
+        Anything that is not already valid syntax is handed to the cluster to be
+        translated, so the panel on the board accepts "back the elf off to the
+        southwest" as readily as the exact command. Exact syntax never reaches
+        the cluster: it parses locally in microseconds, and a two-second round
+        trip to be told what we already knew would make the common path the slow
+        one.
+        """
+        original = text
         try:
             intent = parse(text)
-        except ParseError as e:
-            return self._record(text, source, None, Outcome(False, [str(e)]))
+        except ParseError as first_error:
+            translated = await self._translate(original, source)
+            if translated is not None:
+                return translated
+            return self._record(text, source, None, Outcome(False, [str(first_error)]))
+
+        # Parsing is not the same as making sense. The grammar is deliberately
+        # permissive about names -- it has to be, it does not know who is on the
+        # board -- so "back the elf off from the hamster, head southwest" parses
+        # happily into a retreat by a character called "back elf off from
+        # hamster,". That used to fail with a baffling not-found error while the
+        # translator, which would have got it right, was never consulted. If the
+        # names do not resolve, treat it as prose rather than as a command.
+        if source.endswith("+nl") is False and self._unresolved(intent):
+            translated = await self._translate(original, source)
+            if translated is not None:
+                return translated
 
         # A yes/no only means something while a question is open, and it
         # answers *that* question -- it is never a command in its own right.
@@ -280,11 +305,22 @@ class Console:
         if intent.action in (Action.CONFIRM, Action.CANCEL):
             if held is None:
                 return self._record(text, source, intent, Outcome(False, ["Nothing to confirm."]))
+
+            # Either answer ends the question, so either answer clears its
+            # marker. A highlight left behind outlives the thing it was asking
+            # about and turns into scenery nobody can account for.
+            await self._clear_markers(held)
+
             if intent.action is Action.CANCEL:
                 return self._record(
                     text, source, intent,
                     Outcome(True, [f"Held. {held.question} -- not doing it."]),
                 )
+
+            if held.move_to:
+                return self._record(text, source, held.then or held.intent,
+                                    await self._walk_then_act(held))
+
             intent, accept = held.intent, True
 
         log.info("command: %s -> %s", text, intent)
@@ -328,6 +364,154 @@ class Console:
             return False
         log.info("reconnected")
         return True
+
+    async def _on_state(self, request: web.Request) -> web.Response:
+        """The board as facts, for whatever is writing the commands.
+
+        Serves both shapes: `?format=text` returns the table meant to be pasted
+        into a prompt, and the default JSON is for anything that wants to do its
+        own thing with it. The text form is the point -- it exists so the model
+        stops having to invent distances.
+        """
+        from . import worldstate
+
+        try:
+            state = await worldstate.snapshot(self.client)
+        except Exception as exc:  # noqa: BLE001 - a broken snapshot must not 500 the console
+            log.exception("could not build world state")
+            return web.json_response({"error": str(exc)}, status=503)
+
+        if request.query.get("format") == "text":
+            return web.Response(text=worldstate.render(state), content_type="text/plain")
+        return web.json_response(state)
+
+    async def _clear_markers(self, held: Pending) -> None:
+        if not held.marker_uuids:
+            return
+        from . import scene
+
+        try:
+            await scene.clear_shapes(self.client, held.marker_uuids, temporary=False)
+        except Exception:  # noqa: BLE001 - a stuck marker is not worth losing the answer
+            log.exception("could not clear the suggestion marker")
+
+    async def _walk_then_act(self, held: Pending) -> Outcome:
+        """Accepting a counter-proposal: go there, then do the thing.
+
+        Re-planned rather than replayed. The route was worked out when the
+        question was asked, and between then and now somebody may have moved
+        into it -- walking a stale path would shove a token through whoever
+        arrived. Asking again for the same destination costs one search and
+        cannot walk through anybody.
+        """
+        from .actions import _build_field, execute
+        from .movement import plan_direction  # noqa: F401 - kept for symmetry
+        from . import suggest
+
+        actor, target = held.actor_uuid, held.target_uuid
+        field = await _build_field(self.client)
+
+        sheet_data = await sheet_read(self.client, actor)
+        speed = float((sheet_data or {}).get("speed") or 30)
+        spot = suggest.spot_with_sight(
+            field, actor, target, field.cells_for_speed(speed), await self._sides()
+        )
+        if spot is None:
+            return Outcome(False, ["That spot is no longer available."])
+
+        from .movement import MovePlan, StopReason, walk
+
+        await walk(self.client, field, actor, MovePlan(spot.path, StopReason.ARRIVED, reached=True))
+        moved = Outcome(True, [f"Moved {spot.feet} feet into position."])
+
+        follow = held.then or held.intent
+        try:
+            after = await execute(self.client, follow)
+        except Exception as e:  # noqa: BLE001
+            log.exception("follow-up action failed")
+            return moved.say(f"Then it went wrong: {e}")
+
+        for line in after.lines:
+            moved.say(line)
+        moved.ok = after.ok
+        self._pending = after.pending
+        return moved
+
+    async def _sides(self) -> dict[str, str]:
+        from . import worldstate
+
+        factions = await worldstate._factions(self.client)
+        return {u: worldstate._side(factions, u) for u in self.client.state.shapes}
+
+    def _unresolved(self, intent) -> bool:
+        """True when the intent names somebody who is not on the board."""
+        for name in (intent.actor, intent.target):
+            if name and self.client.state.find_shape(name) is None:
+                return True
+        return False
+
+    async def _translate(self, said: str, source: str) -> Outcome | None:
+        """Try the cluster. None means "no translation available, report the parse error".
+
+        Every gate that can refuse runs *before* execution, and in this order:
+        the model may only answer on one of two channels, the command must name
+        people the player actually said, and -- the strongest of the three --
+        whoever is acting must be whoever's turn it is. The turn check settles
+        what string matching only guesses at: when the order says it is the
+        elf's turn, an attack by the hamster is wrong however confidently it was
+        produced.
+        """
+        # Local imports: worldstate reaches into actions, which imports this
+        # module, so a top-level import would close the loop.
+        from . import nlguard, translate as nl, worldstate
+
+        if nl.cluster_url() is None:
+            return None
+        if not await self._ensure_connected():
+            return None
+
+        result = await nl.translate(self.client, said)
+        channel, payload = result["channel"], result["payload"]
+
+        if channel == "error":
+            log.warning("translation failed: %s", payload)
+            return None
+        if channel == "ask":
+            return self._record(said, source, None, Outcome(True, [f"[?] {payload}"]))
+        if channel == "untagged":
+            return self._record(
+                said, source, None,
+                Outcome(False, [f"I did not understand that. The model said: {payload[:120]}"]),
+            )
+
+        characters = list(self.client.state.characters)
+        refusal = nl.vet_names(payload, said, characters)
+        if refusal:
+            return self._record(said, source, None, Outcome(False, [refusal]))
+
+        try:
+            intent = parse(payload)
+        except ParseError as e:
+            return self._record(said, source, None, Outcome(False, [f"{payload!r}: {e}"]))
+
+        active = (await worldstate.snapshot(self.client)).get("turn_of")
+        clash = nlguard.wrong_turn(intent.action.value, intent.actor, active)
+        if clash:
+            return self._record(said, source, intent, Outcome(False, [clash]))
+
+        log.info("translated %r -> %r", said, payload)
+        outcome = await self.handle(payload, f"{source}+nl")
+        # Show what it was understood as, or a surprising result is impossible
+        # to tell apart from a mistranslation. `_record` copies the lines when
+        # it builds the entry, so the log has to be amended as well -- mutating
+        # only the returned Outcome left the panel showing a result with no
+        # sign of what produced it.
+        echo = f"[{payload}]"
+        outcome.lines.insert(0, echo)
+        if self.log:
+            self.log[-1]["lines"] = list(outcome.lines)
+            self.log[-1]["command"] = said
+        return outcome
 
     async def _note(self, text: str) -> None:
         """Log something the ghost noticed rather than something it was told.
@@ -400,6 +584,7 @@ class Console:
         app.router.add_post("/command", self._on_command)
         app.router.add_get("/log", lambda _r: web.json_response({"entries": self.log}))
         app.router.add_get("/characters", lambda _r: web.json_response({"characters": list(self.client.state.characters)}))
+        app.router.add_get("/state", self._on_state)
 
         self._runner = web.AppRunner(app)
         await self._runner.setup()

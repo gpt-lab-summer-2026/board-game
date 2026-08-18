@@ -11,6 +11,7 @@ import {
     findWeapon,
     findRace,
     findSpell,
+    findItem,
     spellsForClass,
     bodyArmour,
     shields,
@@ -146,6 +147,30 @@ const spellAbility = computed(() => castingAbility(data.value));
 const cantrip = computed(() => findCantrip(data.value.equipped.cantrip));
 const isCaster = computed(() => canCast(data.value));
 const cantripChoices = computed(() => availableCantrips(data.value));
+const itemChoices = computed(() => catalogue.value.items ?? []);
+const carried = computed(() =>
+    (data.value.inventory ?? []).map((e) => ({ ...e, item: findItem(e.id) })).filter((e) => e.item),
+);
+
+function carryCount(id: string): number {
+    return data.value.inventory?.find((e) => e.id === id)?.quantity ?? 0;
+}
+
+function setCarried(id: string, quantity: number): void {
+    const list = [...(data.value.inventory ?? [])];
+    const at = list.findIndex((e) => e.id === id);
+    const n = Math.max(0, Math.floor(quantity));
+    if (at === -1) {
+        if (n > 0) list.push({ id, quantity: n });
+    } else if (n === 0) {
+        list.splice(at, 1);
+    } else {
+        list[at] = { id, quantity: n };
+    }
+    data.value.inventory = list;
+    save();
+}
+
 const spellChoices = computed(() => (canCast(data.value) ? spellsForClass(data.value.classId) : []));
 const preparedSpells = computed(() => derived.value.spells ?? []);
 const slotLevels = computed(() =>
@@ -770,6 +795,27 @@ async function removePreset(): Promise<void> {
                     <strong>{{ s.name }}.</strong> {{ textOf(s.id) }}
                 </p>
             </template>
+        </section>
+
+        <section>
+            <h3>Equipment</h3>
+            <p class="muted small">Consumables. The ghost spends a charge when one is used.</p>
+            <div class="spell-picker">
+                <label v-for="i of itemChoices" :key="i.id" class="check" :title="i.text">
+                    <input
+                        type="number"
+                        min="0"
+                        class="narrow"
+                        :value="carryCount(i.id)"
+                        @change="setCarried(i.id, Number(($event.target as HTMLInputElement).value))"
+                    />
+                    <span class="skill-name">{{ i.name }}</span>
+                    <span class="muted">{{ i.kind }}</span>
+                </label>
+            </div>
+            <p v-for="c of carried" :key="`i-${c.id}`" class="muted small">
+                <strong>{{ c.item!.name }}.</strong> {{ c.item!.text }}
+            </p>
         </section>
 
         <section>

@@ -17,8 +17,16 @@ from . import turns
 from . import battlefield
 from .client import GhostClient
 from .commands import Action, AttackKind, Intent, HELP_TEXT
-from .grid import GridType
-from .movement import StopReason, plan_move_into_reach, walk
+from .grid import GridType, distance as grid_distance
+from .movement import (
+    COMPASS,
+    MovePlan,
+    StopReason,
+    plan_direction,
+    plan_move_into_reach,
+    plan_retreat,
+    walk,
+)
 
 log = logging.getLogger(__name__)
 
@@ -30,12 +38,28 @@ MELEE_REACH_CELLS = 1
 
 @dataclass
 class Pending:
-    """An action held back until the player confirms it."""
+    """An action held back until the player confirms it.
+
+    Two shapes now. The original: an intent the ghost is willing to carry out
+    once somebody accepts the risk -- walking through fire. The second: a
+    *counter-proposal*, where the thing asked for cannot be done and the ghost
+    has found something adjacent to it that can. `move_to` carries the route,
+    and `then` the action to take on arrival, so "you have no shot from there,
+    step twelve feet east and take it?" is one yes.
+
+    `marker_uuids` are the temporary shapes drawn to show where "there" is.
+    Whoever resolves the question is responsible for clearing them, on yes and
+    on no alike -- a marker left on the board outlives the question it was
+    asking and becomes scenery nobody can explain.
+    """
 
     intent: Intent
     actor_uuid: str
     target_uuid: str
     question: str
+    move_to: list = dc_field(default_factory=list)
+    then: "Intent | None" = None
+    marker_uuids: list[str] = dc_field(default_factory=list)
 
 
 @dataclass
@@ -92,6 +116,20 @@ async def execute(
     if intent.action is Action.CHECK:
         return await _do_check(client, actor_uuid, intent, as_player)
 
+    if intent.action is Action.MOVE_DIR:
+        return await _do_move_direction(client, actor_uuid, intent)
+
+    if intent.action is Action.USE_ITEM:
+        item_target = None
+        if intent.target:
+            item_target = client.state.find_shape(intent.target)
+            if item_target is None:
+                return Outcome(False, [f"I can't find a target called {intent.target!r}."])
+        return await _do_use_item(client, actor_uuid, item_target, intent, as_player)
+
+    if intent.action is Action.JUMP and intent.direction:
+        return await _do_jump(client, actor_uuid, None, intent)
+
     if intent.action is Action.CAST:
         # Resolved before the mandatory lookup below: a self-buff like Shield
         # and an area spell like Burning Hands are cast with no target at all,
@@ -111,6 +149,12 @@ async def execute(
 
     actor_name = _display_name(client, actor_uuid, intent.actor)
     target_name = _display_name(client, target_uuid, intent.target)
+
+    if intent.action is Action.JUMP:
+        return await _do_jump(client, actor_uuid, target_uuid, intent)
+
+    if intent.action is Action.RETREAT:
+        return await _do_retreat(client, actor_uuid, target_uuid, actor_name, target_name, intent)
 
     if intent.action is Action.CONTEST:
         return await _do_contest(client, actor_uuid, target_uuid, intent, as_player)
@@ -158,6 +202,353 @@ async def _build_field(client: GhostClient) -> battlefield.Battlefield:
         unit_size=client.state.unit_size,
         hazard_uuids=client.state.hazard_uuids,
     )
+
+
+async def _friendly_fire_warning(client, caster_uuid, target_uuid, spell) -> str | None:
+    """A line to say when an area spell would also catch your own side.
+
+    Returns None when the spell has no area, when sides have not been assigned,
+    or when only enemies are in it -- silence is the right output for the normal
+    case, and a warning that fires on every cast stops being read.
+    """
+    from . import suggest
+
+    area = spell.get("area")
+    if not area:
+        return None
+
+    field = await _build_field(client)
+    origin = field.occupants.get(target_uuid) or field.occupants.get(caster_uuid)
+    if origin is None:
+        return None
+
+    # Approximated as a disc of the stated size. A true cone needs a facing,
+    # which nothing on the board records; over-reporting who is in the blast is
+    # the safe direction for a warning to be wrong in.
+    radius = max(1, int(int(area.get("size") or 0) / max(field.unit_size, 1)))
+    covered = {
+        cell for cell in field.occupied
+        if grid_distance(cell, origin.cell, field.grid) <= radius
+    }
+
+    sides = await _sides(client)
+    friends = suggest.caught_in_area(field, covered, sides, caster_uuid)
+    friends = [u for u in friends if u != target_uuid]
+    if not friends:
+        return None
+
+    names = ", ".join(_display_name(client, u, None) for u in friends)
+    return (
+        f"That {area.get('size')} ft {area.get('shape')} would also catch {names}. "
+        f"Say yes to cast it anyway, or move first."
+    )
+
+
+async def _offer_a_better_spot(
+    client, field, actor_uuid, target_uuid, actor_name, target_name,
+    intent: Intent, refusal: str, prefix,
+) -> Outcome:
+    """Turn "you cannot" into "not from there -- from here?".
+
+    Held as a Pending rather than done, because moving somebody is not what they
+    asked for. The marker is drawn now so that "here" is a place on the board
+    and not a number in a sentence; it is cleared when the question resolves
+    either way.
+    """
+    from . import suggest
+
+    lines = [*(prefix or []), refusal]
+
+    speed = 30.0
+    actor_sheet = await sheet.read_sheet(client, actor_uuid)
+    if actor_sheet is not None:
+        speed = float(actor_sheet.get("speed") or 30)
+
+    sides = await _sides(client)
+    spot = suggest.spot_with_sight(
+        field, actor_uuid, target_uuid, field.cells_for_speed(speed), sides
+    )
+    if spot is None:
+        return Outcome(False, [*lines, f"There is nowhere within {int(speed)} feet with a clear shot."])
+
+    markers = await _mark(client, field, spot)
+    question = spot.describe(actor_name, target_name) + ". Move there and attack?"
+    return Outcome(
+        True,
+        [*lines, question],
+        pending=Pending(
+            intent=intent,
+            actor_uuid=actor_uuid,
+            target_uuid=target_uuid,
+            question=question,
+            move_to=spot.path,
+            then=intent,
+            marker_uuids=markers,
+        ),
+    )
+
+
+async def _sides(client) -> dict[str, str]:
+    """shape uuid -> disposition, for the threat and friendly-fire checks."""
+    from . import worldstate
+
+    factions = await worldstate._factions(client)
+    return {
+        uuid: worldstate._side(factions, uuid)
+        for uuid in client.state.shapes
+    }
+
+
+async def _mark(client, field, spot) -> list[str]:
+    """Paint the proposed cell, so "there" is somewhere you can point at."""
+    from . import scene
+
+    floor = client.state.current_floor
+    if floor is None:
+        return []
+    try:
+        return await scene.add_block(
+            client, field, [spot.cell], "suggested spot",
+            floor=floor, blocks_vision=False, blocks_movement=False,
+            fill="#82c8a077", layer="draw",
+        )
+    except Exception:  # noqa: BLE001 - a missing marker must not lose the suggestion
+        log.exception("could not draw the suggestion marker")
+        return []
+
+
+# 5e: a running jump clears your Strength score in feet, and half that from a
+# standing start. There is no running-start concept on the board, so the full
+# distance is used and the DM can rule otherwise.
+def jump_feet(strength: int) -> int:
+    return max(5, int(strength))
+
+
+async def _do_use_item(client, actor_uuid, target_uuid, intent: Intent, as_player) -> Outcome:
+    """Drink it, throw it, or drop it -- and spend the charge either way.
+
+    The count comes off before anything is resolved. A grenade that went off and
+    is still in your pack because the damage roll raised is a worse bug than one
+    that is spent on a fumble, and the two are indistinguishable afterwards.
+    """
+    name = _display_name(client, actor_uuid, intent.actor)
+    data = await sheet.read_sheet(client, actor_uuid)
+    if data is None:
+        return Outcome(False, [f"{name} has no sheet, so nothing to carry."])
+
+    carried, entry = await sheet.find_carried(client, data, intent.item or "")
+    if carried is None:
+        have = await sheet.carried_names(client, data)
+        return Outcome(
+            False,
+            [f"{name} is not carrying {intent.item!r}. Carrying: {have or 'nothing'}."],
+        )
+
+    left = await sheet.spend_item(client, actor_uuid, entry["id"])
+    label = carried.get("name") or intent.item
+    out = Outcome(True, [f"{name} uses {label} ({left} left)."])
+
+    if carried.get("healing"):
+        drinker = target_uuid or actor_uuid
+        drinker_name = _display_name(client, drinker, intent.target) if target_uuid else name
+        roll = await client.roll_dice(carried["healing"], share_with="all", as_player=as_player or name)
+        after = await sheet.damage(client, drinker, -roll.total)
+        for line in await deathsaves.on_healed(client, drinker, drinker_name):
+            out.say(line)
+        return out.say(f"{drinker_name} regains {roll.total}, now on {after['current']}.")
+
+    if target_uuid is None:
+        return out.say(f"{label} needs somewhere to go -- name a target.")
+
+    target_name = _display_name(client, target_uuid, intent.target)
+    field = await _build_field(client)
+
+    # Everything caught, not just the named target: an area item that only ever
+    # hit what it was aimed at would be indistinguishable from a dart.
+    victims = [target_uuid]
+    radius_ft = int(carried.get("area") or 0)
+    if radius_ft:
+        centre = field.occupants.get(target_uuid)
+        if centre is not None:
+            radius = max(1, int(radius_ft // field.unit_size))
+            victims = [
+                uuid for uuid, occ in field.occupants.items()
+                if grid_distance(occ.cell, centre.cell, field.grid) <= radius
+            ]
+            if len(victims) > 1:
+                out.say(f"The {radius_ft} ft burst catches {len(victims)} creatures.")
+
+    damage_roll = None
+    if carried.get("damage"):
+        damage_roll = await client.roll_dice(carried["damage"], share_with="all", as_player=as_player or name)
+
+    for victim in victims:
+        victim_name = _display_name(client, victim, None)
+        amount = damage_roll.total if damage_roll else 0
+        if carried.get("save"):
+            ability = carried["save"]
+            dc = int(carried.get("saveDc") or 13)
+            result, _ = await sheet.roll_save(client, victim, ability, as_player=victim_name)
+            made = result.total >= dc
+            out.say(
+                f"{victim_name} rolls {result.total} against DC {dc} {ability.upper()}: "
+                f"{'saves' if made else 'fails'}."
+            )
+            if made:
+                amount = amount // 2
+        if amount > 0:
+            await _land(client, victim, victim_name, amount, out)
+        if carried.get("applies") and not (carried.get("save") and amount == 0):
+            await _apply_on_hit(client, victim, victim_name, carried["applies"], out)
+
+    return out
+
+
+async def _do_jump(client, actor_uuid: str, target_uuid: str | None, intent: Intent) -> Outcome:
+    """Cover ground in one leap, over anything in between.
+
+    Distinct from walking in the way that matters: a jump ignores what is on the
+    floor between take-off and landing, so it crosses a pit or a caltrop field
+    that a walk would have to go round. It cannot cross a wall -- that is a
+    climb -- so the landing cell still has to be reachable in a straight line
+    with nothing solid in the way.
+    """
+    from . import suggest
+    from .grid import cell_center, cell_from_point
+
+    name = _display_name(client, actor_uuid, intent.actor)
+    field = await _build_field(client)
+    mover = field.occupants.get(actor_uuid)
+    if mover is None:
+        return Outcome(False, [f"{name} is not on the board."])
+
+    data = await sheet.read_sheet(client, actor_uuid)
+    strength = int(((data or {}).get("abilities") or {}).get("str") or 10)
+    reach_ft = jump_feet(strength)
+    reach_cells = max(1, int(reach_ft // field.unit_size))
+
+    # Candidate landings: in a straight line towards the target or heading, no
+    # further than the jump allows, and clear to land on.
+    if target_uuid is not None:
+        goal = field.occupants.get(target_uuid)
+        if goal is None:
+            return Outcome(False, ["That target is not on the board."])
+        aim = goal.cell
+    else:
+        heading = COMPASS.get(intent.direction or "")
+        if heading is None:
+            return Outcome(False, [f"{intent.direction!r} is not a direction I know."])
+        ax, ay = cell_center(mover.cell, field.grid)
+        # Aim well past the jump's limit so the line has cells to offer; the
+        # distance check below is what actually bounds it.
+        aim = cell_from_point(
+            ax + heading[0] * reach_ft * 4, ay + heading[1] * reach_ft * 4, field.grid
+        )
+
+    line = field.cells_between(mover.cell, aim)
+    landing = None
+    for cell in line:
+        if grid_distance(mover.cell, cell, field.grid) > reach_cells:
+            break
+        if cell in field.blocked:
+            break  # a wall stops a jump; going over it is a climb
+        if field.is_free(cell, ignore={actor_uuid, target_uuid or ""}):
+            landing = cell
+
+    if landing is None:
+        return Outcome(True, [f"{name} has nowhere to land within {reach_ft} feet."])
+
+    feet = int(grid_distance(mover.cell, landing, field.grid) * field.unit_size)
+    await walk(client, field, actor_uuid, MovePlan([landing], StopReason.ARRIVED, reached=True))
+    await turns.spend_movement(client, actor_uuid, feet, int((data or {}).get("speed") or 30))
+
+    out = Outcome(True, [
+        f"{name} jumps {feet} feet (Strength {strength} allows {reach_ft}), "
+        f"clearing whatever was underneath."
+    ])
+    if target_uuid is not None:
+        gap = int(grid_distance(landing, field.occupants[target_uuid].cell, field.grid) * field.unit_size)
+        out.say(f"That lands {gap} feet from {_display_name(client, target_uuid, intent.target)}.")
+    return out
+
+
+async def _do_move_direction(client, actor_uuid: str, intent: Intent) -> Outcome:
+    """Walk as far as possible along a compass heading."""
+    name = _display_name(client, actor_uuid, intent.actor)
+    heading = COMPASS.get(intent.direction or "")
+    if heading is None:
+        return Outcome(False, [f"{intent.direction!r} is not a direction I know."])
+
+    field = await _build_field(client)
+    speed = 30.0
+    actor_sheet = await sheet.read_sheet(client, actor_uuid)
+    if actor_sheet is not None:
+        speed = float(actor_sheet.get("speed") or 30)
+
+    plan = plan_direction(field, actor_uuid, heading, field.cells_for_speed(speed))
+    if not plan.path:
+        blocker = "something dangerous" if plan.blocked_by_hazard else "a wall"
+        return Outcome(True, [f"{name} can't go {intent.direction} -- {blocker} is in the way."])
+
+    await walk(client, field, actor_uuid, plan)
+    feet = int(plan.steps * field.unit_size)
+    await turns.spend_movement(client, actor_uuid, feet, int(speed))
+
+    out = Outcome(True, [f"{name} moves {feet} feet {intent.direction}."])
+    if plan.reason is StopReason.OUT_OF_MOVEMENT:
+        out.say(f"That is all the movement {name} has.")
+    return out
+
+
+async def _do_retreat(
+    client, actor_uuid, target_uuid, actor_name, target_name, intent
+) -> Outcome:
+    """Back away from a threat, as far as this turn's movement allows."""
+    field = await _build_field(client)
+
+    speed = 30.0
+    actor_sheet = await sheet.read_sheet(client, actor_uuid)
+    if actor_sheet is not None:
+        speed = float(actor_sheet.get("speed") or 30)
+
+    before = field.occupants.get(actor_uuid)
+    threat = field.occupants.get(target_uuid)
+    if before is None or threat is None:
+        return Outcome(False, [f"{actor_name} or {target_name} is not on the board."])
+    gap_before = grid_distance(before.cell, threat.cell, field.grid)
+
+    heading = COMPASS.get(intent.direction or "")
+    plan = plan_retreat(
+        field, actor_uuid, [target_uuid], field.cells_for_speed(speed), heading=heading
+    )
+    if not plan.path:
+        if plan.blocked_by_hazard:
+            return Outcome(
+                True,
+                [f"{actor_name} is boxed in -- every way back from {target_name} crosses something dangerous."],
+            )
+        return Outcome(True, [f"{actor_name} has nowhere to go; {target_name} has it cornered."])
+
+    await walk(client, field, actor_uuid, plan)
+    feet = int(plan.steps * field.unit_size)
+    await turns.spend_movement(client, actor_uuid, feet, int(speed))
+
+    gap_after = grid_distance(plan.path[-1], threat.cell, field.grid)
+    which_way = f" to the {intent.direction}" if intent.direction and plan.heading_honoured else ""
+    out = Outcome(True, [
+        f"{actor_name} backs {feet} feet away from {target_name}{which_way}, "
+        f"opening the gap from {int(gap_before * field.unit_size)} to "
+        f"{int(gap_after * field.unit_size)} feet."
+    ])
+    if intent.direction and not plan.heading_honoured:
+        out.say(f"Nothing to the {intent.direction} was reachable, so it went the other way.")
+    # Worth saying out loud: leaving a threatened square is what provokes, and
+    # the ghost is not going to roll someone else's reaction unasked.
+    if gap_before <= MELEE_REACH_CELLS:
+        out.say(f"That leaves {target_name}'s reach, so it may take an opportunity attack.")
+    if plan.reason is StopReason.OUT_OF_MOVEMENT:
+        out.say(f"That is all the movement {actor_name} has.")
+    return out
 
 
 async def _do_move(
@@ -434,6 +825,13 @@ async def _do_cast(
         return out.say(f"{name} needs a target.")
 
     if kind == "save":
+        # Area spells do not care whose side anybody is on, so check before the
+        # slot is gone. Asking afterwards would be a report of a mistake rather
+        # than a chance to avoid one.
+        warning = await _friendly_fire_warning(client, actor_uuid, target_uuid, spell)
+        if warning is not None:
+            return out.say(warning)
+
         dc = spell.get("saveDc")
         ability = spell.get("save") or "dex"
         damage = await client.roll_dice(spell["damage"], share_with="all", as_player=as_player or actor_name)
@@ -673,13 +1071,15 @@ async def _do_attack(
             # the way" of a *view* is simply untrue -- you can see over it.
             between = [x for x in field.cells_between(a.cell, b.cell) if x in field.opaque]
             blockers = _hazard_names(field, between) or "something solid"
-            return Outcome(
-                False,
-                [
-                    *(prefix or []),
-                    f"{actor_name} has no line of sight to {target_name} — "
-                    f"{blockers} {_is_are(blockers)} in the way.",
-                ],
+            refusal = (
+                f"{actor_name} has no line of sight to {target_name} — "
+                f"{blockers} {_is_are(blockers)} in the way."
+            )
+            # A refusal is true and useless on its own. The same geometry that
+            # says "no" also knows where "yes" is, so offer it.
+            return await _offer_a_better_spot(
+                client, field, actor_uuid, target_uuid, actor_name, target_name,
+                intent, refusal, prefix,
             )
 
     target_sheet = await sheet.read_sheet(client, target_uuid)

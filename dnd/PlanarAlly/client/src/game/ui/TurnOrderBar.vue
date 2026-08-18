@@ -76,16 +76,35 @@ function sideOf(actor: DeepReadonly<InitiativeData>): string {
 // Resetting on a watcher rather than from inside PA's initiative store keeps the
 // fork's diff off upstream's code. Guarded to the DM so five browsers do not
 // race to write the same reset.
-watch(
-    [round, turn, activeId],
-    () => {
-        if (!isDm.value) return;
-        turnBudgetSystem.syncToTurn(round.value, turn.value, activeId.value);
-    },
-    { immediate: true },
-);
+//
+// Deliberately NOT `immediate`. An immediate watcher fires before onMounted has
+// finished loading the DataBlock, so `save()` finds no block yet and drops the
+// write -- and then `load()` overwrites the local copy with the server's
+// defaults. The sync silently vanished, and since syncToTurn is idempotent on
+// (round, turn, active) it never tried again: the bar rendered correctly while
+// the budget behind it stayed empty.
+function syncNow(): void {
+    if (!isDm.value) return;
+    turnBudgetSystem.syncToTurn(round.value, turn.value, activeId.value);
+}
 
-onMounted(() => void turnBudgetSystem.load());
+watch([round, turn, activeId], syncNow);
+
+onMounted(async () => {
+    await turnBudgetSystem.load();
+    syncNow();
+});
+
+// Same reason as the Sides panel: a location load clears every system and this
+// component stays mounted through it, so the block has to be picked up again.
+watch(
+    () => turnBudgetState.reactive.loaded,
+    async (loaded) => {
+        if (loaded) return;
+        await turnBudgetSystem.load();
+        syncNow();
+    },
+);
 </script>
 
 <template>

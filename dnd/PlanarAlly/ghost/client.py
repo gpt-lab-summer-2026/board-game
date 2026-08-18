@@ -371,14 +371,22 @@ class GhostClient:
             self.state.shape_layer.pop(uuid, None)
             log.info("shape removed: %s", uuid)
 
-        @self.sio.on("Shape.Position.Update", namespace=ns)
+        @self.sio.on("Shapes.Position.Update", namespace=ns)
         async def shape_moved(data):
-            uuid = data.get("uuid")
-            if uuid in self.state.shapes:
-                self.state.shapes[uuid].update(
-                    {"x": data.get("x"), "y": data.get("y")}
-                )
-                log.info("shape moved: %s -> (%s,%s)", uuid, data.get("x"), data.get("y"))
+            """Someone else moved something; keep our copy of the board honest.
+
+            Plural and nested, matching what the server actually broadcasts. The
+            singular form this used to listen for never fired, so the ghost's
+            idea of where everything stood only ever updated from its own moves.
+            """
+            entries = data.get("shapes") if isinstance(data, dict) else data
+            for entry in entries or []:
+                uuid = entry.get("uuid")
+                points = (entry.get("position") or {}).get("points") or []
+                if uuid in self.state.shapes and points:
+                    x, y = points[0][0], points[0][1]
+                    self.state.shapes[uuid].update({"x": x, "y": y})
+                    log.info("shape moved: %s -> (%s,%s)", uuid, x, y)
 
         @self.sio.on("Initiative.Turn.Update", namespace=ns)
         async def turn_advanced(data):
@@ -458,13 +466,26 @@ class GhostClient:
         )
         return result
 
-    async def move_shape(self, uuid: str, x: float, y: float) -> None:
-        """Move a token. Coordinates are PlanarAlly world units, not pixels."""
+    async def move_shape(self, uuid: str, x: float, y: float, angle: float = 0.0) -> None:
+        """Move a token. Coordinates are PlanarAlly world units, not pixels.
+
+        The event is `Shapes.Position.Update` -- plural, with the payload nested
+        under `position.points` -- because that is the only mover the server
+        registers (see api/socket/shape/__init__.py). An earlier singular
+        `Shape.Position.Update` carrying flat x/y was accepted by socket.io and
+        then dropped on the floor: unknown events raise nothing, so every move
+        "succeeded" and nothing on the board ever moved.
+        """
         shape = self.state.shapes.get(uuid)
         if shape is None:
             raise KeyError(f"unknown shape {uuid}")
         await self.emit(
-            "Shape.Position.Update",
-            {"uuid": uuid, "x": x, "y": y, "temporary": False},
+            "Shapes.Position.Update",
+            {
+                "temporary": False,
+                "shapes": [
+                    {"uuid": uuid, "position": {"angle": angle, "points": [[x, y]]}}
+                ],
+            },
         )
         shape.update({"x": x, "y": y})

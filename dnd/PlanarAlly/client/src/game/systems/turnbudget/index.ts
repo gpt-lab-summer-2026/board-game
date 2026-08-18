@@ -50,7 +50,16 @@ class TurnBudgetSystem implements System {
     }
 
     private save(): void {
-        if (block === undefined) return;
+        if (block === undefined) {
+            // Called before load() finished. Dropping it here is what made the
+            // first turn-sync vanish, so retry once the block arrives instead.
+            void this.load().then(() => {
+                if (block === undefined) return;
+                block.updateData($.data as TurnBudget);
+                block.sync();
+            });
+            return;
+        }
         block.updateData($.data as TurnBudget);
         block.sync();
     }

@@ -57,7 +57,20 @@ class FactionSystem implements System {
      * one save path means the panel cannot get half-applied on other clients.
      */
     private save(): void {
-        if (block === undefined) return;
+        if (block === undefined) {
+            // The server sends CLEAR on every location load, which runs
+            // clearSystems() and drops this block. The panel is already mounted
+            // by then, so its onMounted load never runs again and every
+            // subsequent save returned here silently -- which is exactly what
+            // "the Sides tab doesn't save between loads" looked like from the
+            // outside. Reload and write, rather than discarding the edit.
+            void this.load().then(() => {
+                if (block === undefined) return;
+                block.updateData($.data as FactionData);
+                block.sync();
+            });
+            return;
+        }
         block.updateData($.data as FactionData);
         block.sync();
     }

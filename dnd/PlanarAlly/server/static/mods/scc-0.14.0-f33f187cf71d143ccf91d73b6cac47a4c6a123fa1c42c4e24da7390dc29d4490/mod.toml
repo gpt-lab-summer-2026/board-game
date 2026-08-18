@@ -2,7 +2,7 @@
 apiSchema = "0.1.0"
 tag = "scc"
 name = "Simple Character Sheet"
-version = "0.16.0"
+version = "0.14.0"
 author = "PlanarAlly"
 shortDescription = "A character editor for PlanarAlly"
 

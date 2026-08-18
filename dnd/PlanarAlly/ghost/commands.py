@@ -34,6 +34,10 @@ class Action(str, Enum):
     CHECK = "check"
     CONTEST = "contest"
     CAST = "cast"
+    RETREAT = "retreat"
+    MOVE_DIR = "move_dir"
+    JUMP = "jump"
+    USE_ITEM = "use_item"
     CONFIRM = "confirm"
     CANCEL = "cancel"
     HELP = "help"
@@ -71,11 +75,29 @@ class Intent:
     contest: str | None = None
     """Spell name, as spoken."""
     spell: str | None = None
+    """Compass heading: north, southwest, and so on."""
+    direction: str | None = None
+    """Consumable name, as spoken."""
+    item: str | None = None
     raw: str = ""
 
 
 class ParseError(ValueError):
     """Raised with a message meant to be read aloud to the player."""
+
+
+class ClarificationNeeded(ParseError):
+    """The translator asked the player something instead of issuing a command.
+
+    Subclasses ParseError deliberately: callers written before the two-channel
+    contract existed catch ParseError and report "unclear", which is a poor
+    answer but not a broken one. Callers that know about it read `.question`
+    and put it to the player instead.
+    """
+
+    def __init__(self, question: str) -> None:
+        super().__init__(question)
+        self.question = question
 
 
 _KIND_WORDS = {
@@ -211,6 +233,58 @@ _CAST_RE = re.compile(
     re.I,
 )
 
+# "elf jumps towards hamster", "cat leaps at emo", "elf jumps north"
+_JUMP_RE = re.compile(
+    r"^\s*(?P<a>.+?)\s+(?:jumps?|leaps?|vaults?|springs?)\s+"
+    # Preposition optional: "jumps at the goblin" and "jumps north" are the
+    # same verb, and requiring one silently lost every bare direction.
+    r"(?:towards?|at|to|onto|over\s+to)?\s*(?P<b>.+?)\s*$",
+    re.I,
+)
+
+# "elf drinks a potion of healing", "cat throws a smokepowder bomb at emo",
+# "elf uses alchemist's fire on hamster"
+_ITEM_RE = re.compile(
+    r"^\s*(?P<a>.+?)\s+(?:drinks?|quaffs?|throws?|lobs?|hurls?|uses?|applies)\s+"
+    r"(?:an?\s+|the\s+)?(?P<item>.+?)"
+    r"(?:\s+(?:on|at|against|towards?)\s+(?P<b>.+?))?\s*$",
+    re.I,
+)
+
+# Spoken forms of the eight headings, including the abbreviations people
+# actually say at a table.
+DIRECTION_WORDS = {
+    "north": "north", "n": "north", "up": "north",
+    "south": "south", "s": "south", "down": "south",
+    "east": "east", "e": "east", "right": "east",
+    "west": "west", "w": "west", "left": "west",
+    "northeast": "northeast", "north east": "northeast", "ne": "northeast",
+    "northwest": "northwest", "north west": "northwest", "nw": "northwest",
+    "southeast": "southeast", "south east": "southeast", "se": "southeast",
+    "southwest": "southwest", "south west": "southwest", "sw": "southwest",
+}
+
+_DIR_ALT = "|".join(sorted((re.escape(w) for w in DIRECTION_WORDS), key=len, reverse=True))
+
+# "elf moves north", "cat goes to the southwest", "elf steps east"
+_DIRECTION_RE = re.compile(
+    rf"^\s*(?P<a>.+?)\s+(?:moves?|goes|go|walks?|steps?|heads?|runs?)\s+"
+    rf"(?:to\s+)?(?:the\s+)?(?P<dir>{_DIR_ALT})(?:wards?)?\s*$",
+    re.I,
+)
+
+# "elf moves away from hamster", "elf retreats from the goblin",
+# "back cat off from emo", "elf flees hamster"
+_RETREAT_RE = re.compile(
+    r"^\s*(?P<a>.+?)\s+(?:"
+    r"(?:moves?|backs?|steps?|pulls?|gets?)\s+(?:away|back|off)\s+from"
+    r"|retreats?\s+from|withdraws?\s+from|runs?\s+(?:away\s+)?from|flees?(?:\s+from)?"
+    r"|disengages?\s+from"
+    r")\s+(?P<b>.+?)"
+    rf"(?:\s+(?:to|towards?|heading)\s+(?:the\s+)?(?P<dir>{_DIR_ALT})(?:wards?)?)?\s*$",
+    re.I,
+)
+
 _MEASURE_RE = re.compile(
     r"^\s*(?:measure|distance|ruler|how\s+far(?:\s+is)?)\s+"
     r"(?:from\s+|between\s+)?(?P<a>.+?)\s+(?:to|from|and)\s+(?P<b>.+?)\s*$",
@@ -231,8 +305,18 @@ def _clean(words: Iterable[str]) -> str:
     return " ".join(w for w in words if w not in _FILLER).strip()
 
 
+# The two channels the upstream translator answers on. Tolerated here so that a
+# tagged line can be handed straight to `parse` without the caller having to
+# know about the contract.
+_CMD_TAG = re.compile(r"^\s*CMD\s*:\s*", re.I)
+_ASK_TAG = re.compile(r"^\s*ASK\s*:\s*", re.I)
+
+
 def parse(text: str) -> Intent:
-    raw = text.strip()
+    asked = _ASK_TAG.match(text or "")
+    if asked:
+        raise ClarificationNeeded(text[asked.end():].strip())
+    raw = _CMD_TAG.sub("", text or "").strip()
     lowered = raw.lower()
     if not lowered:
         raise ParseError("Nothing to do -- say a command.")
@@ -350,6 +434,65 @@ def parse(text: str) -> Intent:
             raw=raw,
         )
 
+    jumped = _JUMP_RE.match(trimmed)
+    if jumped:
+        actor = _clean(jumped["a"].split())
+        target_word = _clean(jumped["b"].split())
+        if not actor or not target_word:
+            raise ParseError("Jump towards what?")
+        heading = DIRECTION_WORDS.get(target_word)
+        # "jumps north" is a direction; "jumps at the goblin" is a target. Both
+        # are the same verb, so the object decides which.
+        return Intent(
+            Action.JUMP,
+            actor=actor,
+            target=None if heading else target_word,
+            direction=heading,
+            raw=raw,
+        )
+
+    fled = _RETREAT_RE.match(trimmed)
+    if fled:
+        actor = _clean(fled["a"].split())
+        target = _clean(fled["b"].split())
+        if not actor or not target:
+            raise ParseError("Away from whom?")
+        return Intent(
+            Action.RETREAT,
+            actor=actor,
+            target=target,
+            direction=DIRECTION_WORDS.get((fled["dir"] or "").lower()),
+            raw=raw,
+        )
+
+    # After retreat: "elf moves away from hamster" also matches the bare
+    # directional shape if "away from hamster" were ever a heading, and the
+    # more specific reading is the right one.
+    headed = _DIRECTION_RE.match(trimmed)
+    if headed:
+        actor = _clean(headed["a"].split())
+        if not actor:
+            raise ParseError("Who is moving?")
+        return Intent(
+            Action.MOVE_DIR,
+            actor=actor,
+            direction=DIRECTION_WORDS[headed["dir"].lower()],
+            raw=raw,
+        )
+
+    used = _ITEM_RE.match(trimmed)
+    if used:
+        actor = _clean(used["a"].split())
+        thing = _clean(used["item"].split())
+        if actor and thing:
+            return Intent(
+                Action.USE_ITEM,
+                actor=actor,
+                target=_clean(used["b"].split()) if used["b"] else None,
+                item=thing,
+                raw=raw,
+            )
+
     cast_m = _CAST_RE.match(trimmed)
     if cast_m:
         who = _clean((cast_m["who"] or "").split())
@@ -460,6 +603,10 @@ HELP_TEXT = """Commands:
   <actor> ranged attack on <target>     shoot from where you stand
   <actor> cantrip on <target>           cast the equipped cantrip
   <actor> moves to <target>             walk towards without attacking
+  <actor> moves away from <target> [to <dir>]   back off as far as movement allows
+  <actor> moves <dir>                  north, southwest, ... as far as possible
+  <actor> jumps to <target|dir>        a running jump, limited by Strength
+  <actor> drinks/throws <item> [on <target>]   use a consumable
   measure from <actor> to <target>      distance and line of sight, drawn on the map
   duplicate <actor> [as <name>]         copy a character, sheet and all
   apply <condition> to <target>         prone, poisoned, stunned, ...

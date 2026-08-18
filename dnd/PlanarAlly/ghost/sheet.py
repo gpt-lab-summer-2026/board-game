@@ -345,6 +345,66 @@ def find_prepared(sheet: dict[str, Any] | None, name: str) -> dict[str, Any] | N
     return None
 
 
+async def _catalogue_items(client: GhostClient) -> list[dict[str, Any]]:
+    cat = await read_catalogue(client)
+    return list((cat or {}).get("items") or [])
+
+
+async def carried_names(client: GhostClient, sheet: dict[str, Any]) -> str:
+    """What this character has in their pack, for an error message worth reading."""
+    items = {i.get("id"): i for i in await _catalogue_items(client)}
+    parts = []
+    for entry in sheet.get("inventory") or []:
+        item = items.get(entry.get("id")) or {}
+        parts.append(f"{item.get('name') or entry.get('id')} x{entry.get('quantity', 0)}")
+    return ", ".join(parts)
+
+
+async def find_carried(
+    client: GhostClient, sheet: dict[str, Any], spoken: str
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Match a spoken item name against what is actually in the pack.
+
+    Returns (catalogue entry, inventory entry). Both None when they do not have
+    one -- being out of potions and never having carried them should read the
+    same way at the table, and the count is what the message reports.
+    """
+    wanted = spoken.strip().lower()
+    if not wanted:
+        return None, None
+    items = {i.get("id"): i for i in await _catalogue_items(client)}
+
+    best: tuple[dict[str, Any], dict[str, Any]] | None = None
+    for entry in sheet.get("inventory") or []:
+        if int(entry.get("quantity") or 0) <= 0:
+            continue
+        item = items.get(entry.get("id"))
+        if item is None:
+            continue
+        label = str(item.get("name", "")).lower()
+        if label == wanted:
+            return item, entry
+        if label and (label in wanted or wanted in label):
+            best = (item, entry)
+    return best if best else (None, None)
+
+
+async def spend_item(client: GhostClient, shape: str, item_id: str) -> int:
+    """Use one up. Returns how many are left."""
+    data = await read_sheet(client, shape)
+    if data is None:
+        return 0
+    inventory = [dict(e) for e in (data.get("inventory") or [])]
+    left = 0
+    for entry in inventory:
+        if entry.get("id") == item_id:
+            entry["quantity"] = max(0, int(entry.get("quantity") or 0) - 1)
+            left = entry["quantity"]
+    data["inventory"] = inventory
+    await write_sheet(client, shape, data)
+    return left
+
+
 async def set_ac_modifier(
     client: GhostClient, shape: str, value: int, source: str, rounds: int | None
 ) -> int:
