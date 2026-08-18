@@ -24,7 +24,7 @@ MODEL = WhisperModel("distil-small.en", device="cpu", compute_type="int8")
 VADMODEL = load_silero_vad()
 WAKEWORD_MODEL = Model(inference_framework="onnx")
 
-AUDIO_DEVICE = 3 # check correct device with 'python -m sounddevice'
+AUDIO_DEVICE = int(os.getenv("AUDIO_DEVICE", 1)) # check correct device with 'python -m sounddevice' and set it in .env
 FS = 48000
 REC_PATH = "recordings/listen.wav"
 POLL_INTERVAL_MS = 500  # how often each listening loop checks the accumulated audio so far

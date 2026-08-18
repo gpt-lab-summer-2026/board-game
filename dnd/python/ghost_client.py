@@ -9,15 +9,18 @@ args = p.parse_args()
 def postReq(message):
     res = requests.post(f"http://{args.host}:{args.port}/command", json=message)
     print("post response status: ", res.status_code)
-    res_move = ' '.join(res.json()["entries"][0]["lines"])
-    print(res_move)
-
-    return res_move
+    return res.json()
 
 def getReq():
     res = requests.get(f"http://{args.host}:{args.port}/characters", )
-    print("get response: ", res.json()["characters"])
+    #print("get response: ", res.json()["characters"])
     # return list of characters
     return res.json()["characters"]
 
-#postReq({"command": "elf ranged attack on emo", "source":"voice "})
+def post_to_cluster(url, payload):
+    res = requests.post(url, json=payload)
+    res.raise_for_status()
+    return res.json()
+
+
+#postReq({"command": "elf ranged attack on emo", "source":"voice "}
