@@ -26,12 +26,29 @@ DEFAULT_FILE = Path.home() / ".config/planarally-ghost/password"
 ALLOWED_USER = "ghost"
 
 
+def _warn_if_run_as_a_file() -> None:
+    """`python ghost/reset_password.py` half-works and then fails oddly.
+
+    The script lives in a package and is meant to be run with `-m`. Run as a
+    plain path it may pick up the wrong interpreter and will not resolve its
+    sibling modules, so it is worth naming the correct invocation up front.
+    """
+    if __package__:
+        return
+    print(
+        "Note: run this as a module, from the PlanarAlly directory:\n"
+        "    server/.venv/bin/python -m ghost.reset_password\n",
+        file=sys.stderr,
+    )
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--db", default=str(DEFAULT_DB))
     p.add_argument("--file", default=str(DEFAULT_FILE))
     p.add_argument("--user", default=ALLOWED_USER)
     args = p.parse_args()
+    _warn_if_run_as_a_file()
 
     if args.user != ALLOWED_USER:
         print(f"refusing: this only resets the {ALLOWED_USER!r} service account", file=sys.stderr)
@@ -40,7 +57,16 @@ def main() -> int:
     try:
         import bcrypt
     except ImportError:
-        print("bcrypt is missing; run this with server/.venv/bin/python", file=sys.stderr)
+        # There are two virtualenvs in this tree and only the server's has
+        # bcrypt, so "run it with the other python" needs to be the literal
+        # command rather than a hint.
+        print(
+            "bcrypt is not installed in this interpreter.\n\n"
+            "Run it from the PlanarAlly directory with the server's venv:\n"
+            "    cd ~/board-game/dnd/PlanarAlly\n"
+            "    server/.venv/bin/python -m ghost.reset_password\n",
+            file=sys.stderr,
+        )
         return 2
 
     db = Path(args.db)
