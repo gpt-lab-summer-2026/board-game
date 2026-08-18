@@ -1,0 +1,7 @@
+# Runtime data: the live sqlite db (+ WAL/SHM sidecar files), ad-hoc backups, and the
+# stats pepper secret. A git checkout/rebase/stash silently rewinding this file is what
+# caused the ghost login 401 -- these should never be tracked.
+*
+
+# Except the gitignore
+!.gitignore
