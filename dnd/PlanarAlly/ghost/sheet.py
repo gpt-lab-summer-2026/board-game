@@ -92,6 +92,29 @@ async def write_sheet(client: GhostClient, shape: str, sheet: dict[str, Any]) ->
     await _save(client, _repr(SHEET_BLOCK, shape), sheet)
 
 
+def armour_class(sheet: dict[str, Any] | None) -> int | None:
+    """The AC to beat, preferring the itemised breakdown over the bare number.
+
+    `derived.ac.total` is what the mod computes from armour, Dexterity and any
+    temporary modifiers; `ac` is the same number written back to the top level so
+    the AC tracker can render it. Reading the breakdown first means a bonus that
+    arrived after the last full save -- half cover, a shield spell -- still counts,
+    and the flat field remains the fallback for sheets written before v0.12.0.
+    """
+    if not sheet:
+        return None
+    derived = sheet.get("derived") or {}
+    block = derived.get("ac") or {}
+    total = block.get("total")
+    if total is None:
+        total = sheet.get("ac")
+    try:
+        value = int(total or 0)
+    except (TypeError, ValueError):
+        return None
+    return value or None
+
+
 @dataclass
 class AttackResult:
     """What an attack produced, plus the descriptor it came from.
@@ -171,6 +194,185 @@ async def roll_attack(
         name, kind, "" if bias == "normal" else f", {bias}", to_hit.total, damage.total,
     )
     return AttackResult(to_hit, damage, attack)
+
+
+# 5e's skill list, keyed to the ability each one uses. Duplicated from the mod's
+# data.ts rather than shared, because the two live in different runtimes; the
+# authority is the sheet's `derived.skills`, and this table is only the fallback
+# for a sheet written before skills existed.
+SKILL_ABILITY = {
+    "acrobatics": "dex", "animal handling": "wis", "arcana": "int", "athletics": "str",
+    "deception": "cha", "history": "int", "insight": "wis", "intimidation": "cha",
+    "investigation": "int", "medicine": "wis", "nature": "int", "perception": "wis",
+    "performance": "cha", "persuasion": "cha", "religion": "int",
+    "sleight of hand": "dex", "stealth": "dex", "survival": "wis",
+}
+
+ABILITY_NAMES = {
+    "str": "Strength", "dex": "Dexterity", "con": "Constitution",
+    "int": "Intelligence", "wis": "Wisdom", "cha": "Charisma",
+}
+
+
+def signed(value: int) -> str:
+    """+3 / -1, for reading a modifier out loud."""
+    return f"+{value}" if value >= 0 else str(value)
+
+
+def _ability_mod(score: int) -> int:
+    return (int(score) - 10) // 2
+
+
+def _bias_notation(bonus: int, bias: str) -> str:
+    """1d20 with the modifier, or the two-dice forms for (dis)advantage."""
+    sign = "+" if bonus >= 0 else "-"
+    tail = f"{sign}{abs(bonus)}"
+    if bias == "advantage":
+        return f"2d20kh1{tail}"
+    if bias == "disadvantage":
+        return f"2d20kl1{tail}"
+    return f"1d20{tail}"
+
+
+def save_bonus(sheet: dict[str, Any] | None, ability: str) -> int:
+    """A saving throw bonus, preferring what the mod worked out."""
+    if not sheet:
+        return 0
+    saves = (sheet.get("derived") or {}).get("saves") or {}
+    entry = saves.get(ability)
+    if isinstance(entry, dict) and entry.get("bonus") is not None:
+        return int(entry["bonus"])
+    return _ability_mod((sheet.get("abilities") or {}).get(ability, 10))
+
+
+def skill_bonus(sheet: dict[str, Any] | None, skill: str) -> tuple[int, str]:
+    """A skill bonus and the ability it keys off."""
+    key = skill.strip().lower()
+    ability = SKILL_ABILITY.get(key, "str")
+    if not sheet:
+        return 0, ability
+    skills = (sheet.get("derived") or {}).get("skills") or {}
+    entry = skills.get(key.replace(" ", "-"))
+    if isinstance(entry, dict) and entry.get("bonus") is not None:
+        return int(entry["bonus"]), str(entry.get("ability") or ability)
+    return _ability_mod((sheet.get("abilities") or {}).get(ability, 10)), ability
+
+
+async def roll_save(
+    client: GhostClient,
+    shape: str,
+    ability: str,
+    *,
+    bias: str = "normal",
+    as_player: str | None = None,
+):
+    """Roll one saving throw. Returns the dice result."""
+    data = await read_sheet(client, shape)
+    bonus = save_bonus(data, ability)
+    return await client.roll_dice(
+        _bias_notation(bonus, bias), share_with="all", as_player=as_player
+    ), bonus
+
+
+async def roll_check(
+    client: GhostClient,
+    shape: str,
+    skill: str,
+    *,
+    bias: str = "normal",
+    as_player: str | None = None,
+):
+    """Roll one ability or skill check. Returns (result, bonus, ability)."""
+    data = await read_sheet(client, shape)
+    if skill in ABILITY_NAMES:
+        # A raw ability check: the modifier only, never proficiency. Using the
+        # saving-throw bonus here would quietly add proficiency for the two
+        # abilities the class is proficient in.
+        ability = skill
+        bonus = _ability_mod(((data or {}).get("abilities") or {}).get(skill, 10))
+    else:
+        bonus, ability = skill_bonus(data, skill)
+    result = await client.roll_dice(
+        _bias_notation(bonus, bias), share_with="all", as_player=as_player
+    )
+    return result, bonus, ability
+
+
+# -- spell slots ---------------------------------------------------------------
+
+
+async def spend_slot(client: GhostClient, shape: str, level: int = 1) -> tuple[bool, int]:
+    """Burn one spell slot. Returns (succeeded, slots left).
+
+    A creature with no slot table at all -- a monster, or a martial -- is let
+    through rather than blocked: the table's own ruling on whether a goblin
+    shaman has slots should not be overridden by an empty dict.
+    """
+    data = await read_sheet(client, shape)
+    if data is None:
+        return True, 0
+    slots = data.get("slots") or {}
+    entry = slots.get(str(level))
+    if not isinstance(entry, dict):
+        return True, 0
+
+    used = int(entry.get("used") or 0)
+    maximum = int(entry.get("max") or 0)
+    if used >= maximum:
+        return False, 0
+
+    entry["used"] = used + 1
+    data["slots"] = {**slots, str(level): entry}
+    await write_sheet(client, shape, data)
+    return True, maximum - entry["used"]
+
+
+def find_prepared(sheet: dict[str, Any] | None, name: str) -> dict[str, Any] | None:
+    """Match a spoken spell name against what the character has prepared."""
+    if not sheet:
+        return None
+    wanted = name.strip().lower()
+    spells = (sheet.get("derived") or {}).get("spells") or []
+    for spell in spells:
+        if str(spell.get("name", "")).lower() == wanted:
+            return spell
+    # A partial match, so "magic missile" still finds it when the speaker adds
+    # a word: "cast magic missiles".
+    for spell in spells:
+        label = str(spell.get("name", "")).lower()
+        if label and (label in wanted or wanted in label):
+            return spell
+    return None
+
+
+async def set_ac_modifier(
+    client: GhostClient, shape: str, value: int, source: str, rounds: int | None
+) -> int:
+    """Attach a temporary AC change and return the new total."""
+    import uuid as _uuid
+
+    data = await read_sheet(client, shape)
+    if data is None:
+        return 0
+    mods = list(data.get("acModifiers") or [])
+    mods.append({
+        "id": str(_uuid.uuid4()),
+        "source": source,
+        "value": value,
+        "duration": {"kind": "rounds", "remaining": rounds} if rounds else {"kind": "manual"},
+    })
+    data["acModifiers"] = mods
+
+    block = (data.get("derived") or {}).get("ac") or {}
+    total_mods = sum(int(m.get("value") or 0) for m in mods)
+    without = int(block.get("total") or data.get("ac") or 10) - int(block.get("modifiers") or 0)
+    data["ac"] = without + total_mods
+    if block:
+        block["modifiers"] = total_mods
+        block["total"] = data["ac"]
+
+    await write_sheet(client, shape, data)
+    return data["ac"]
 
 
 async def set_condition(

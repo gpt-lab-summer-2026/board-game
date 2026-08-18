@@ -7,10 +7,13 @@ at all -- so each step says what it did and, when it stopped early, why.
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import dataclass, field as dc_field
+from typing import Any
 
 from . import deathsaves
 from . import sheet
+from . import turns
 from . import battlefield
 from .client import GhostClient
 from .commands import Action, AttackKind, Intent, HELP_TEXT
@@ -80,6 +83,26 @@ async def execute(
     if intent.action is Action.HEAL:
         return await _do_heal(client, actor_uuid, intent)
 
+    if intent.action is Action.AC_MODIFIER:
+        return await _do_ac_modifier(client, actor_uuid, intent)
+
+    if intent.action is Action.SAVE:
+        return await _do_save(client, actor_uuid, intent, as_player)
+
+    if intent.action is Action.CHECK:
+        return await _do_check(client, actor_uuid, intent, as_player)
+
+    if intent.action is Action.CAST:
+        # Resolved before the mandatory lookup below: a self-buff like Shield
+        # and an area spell like Burning Hands are cast with no target at all,
+        # and refusing them for want of one would be wrong.
+        spell_target = None
+        if intent.target:
+            spell_target = client.state.find_shape(intent.target)
+            if spell_target is None:
+                return Outcome(False, [f"I can't find a target called {intent.target!r}."])
+        return await _do_cast(client, actor_uuid, spell_target, intent, as_player)
+
     target_uuid = client.state.find_shape(intent.target or "")
     if target_uuid is None:
         return Outcome(False, [f"I can't find a target called {intent.target!r}."])
@@ -88,6 +111,9 @@ async def execute(
 
     actor_name = _display_name(client, actor_uuid, intent.actor)
     target_name = _display_name(client, target_uuid, intent.target)
+
+    if intent.action is Action.CONTEST:
+        return await _do_contest(client, actor_uuid, target_uuid, intent, as_player)
 
     if intent.action is Action.MEASURE:
         return await _do_measure(client, actor_uuid, target_uuid, actor_name, target_name)
@@ -172,6 +198,11 @@ async def _do_move(
     if plan.steps:
         await walk(client, field, actor_uuid, plan)
         feet = int(plan.steps * field.unit_size)
+        # Book it against the turn budget so the bar agrees with the board. A
+        # no-op when it is not this creature's turn, which is the common case
+        # for shuffling monsters around outside combat.
+        speed = (await sheet.read_sheet(client, actor_uuid) or {}).get("speed")
+        await turns.spend_movement(client, actor_uuid, feet, speed)
         out.say(f"{actor_name} moves {feet} feet towards {target_name}.")
     else:
         out.say(f"{actor_name} doesn't move.")
@@ -235,6 +266,294 @@ async def _do_condition(client, target_uuid: str, intent: Intent) -> Outcome:
         others = await sheet.condition_names(client, remaining)
         return out.say(f"Currently: {', '.join(others).lower()}.")
     return out.say("No conditions remaining.")
+
+
+SKILL_LABEL = {
+    "str": "Strength", "dex": "Dexterity", "con": "Constitution",
+    "int": "Intelligence", "wis": "Wisdom", "cha": "Charisma",
+}
+
+
+def _verdict(total: int, dc: int | None) -> str:
+    """The clause that closes a roll, with or without a DC to beat."""
+    if dc is None:
+        return "."
+    return f" against DC {dc} -- {'success' if total >= dc else 'failure'}."
+
+
+async def _do_save(client, actor_uuid: str, intent: Intent, as_player: str | None) -> Outcome:
+    name = _display_name(client, actor_uuid, intent.actor)
+    ability = intent.ability or "dex"
+    result, bonus = await sheet.roll_save(
+        client, actor_uuid, ability, bias=intent.bias, as_player=as_player or name
+    )
+    label = SKILL_LABEL.get(ability, ability.upper())
+    how = "" if intent.bias == "normal" else f" with {intent.bias}"
+    return Outcome(
+        True,
+        [
+            f"{name} rolls a {label} save{how}: {result.total} "
+            f"({sheet.signed(bonus)}){_verdict(result.total, intent.dc)}"
+        ],
+    )
+
+
+async def _do_check(client, actor_uuid: str, intent: Intent, as_player: str | None) -> Outcome:
+    name = _display_name(client, actor_uuid, intent.actor)
+    skill = intent.skill or "str"
+    result, bonus, ability = await sheet.roll_check(
+        client, actor_uuid, skill, bias=intent.bias, as_player=as_player or name
+    )
+    label = SKILL_LABEL.get(skill, skill.title())
+    how = "" if intent.bias == "normal" else f" with {intent.bias}"
+    return Outcome(
+        True,
+        [
+            f"{name} rolls {label} ({ability.upper()}){how}: "
+            f"{result.total} ({sheet.signed(bonus)}){_verdict(result.total, intent.dc)}"
+        ],
+    )
+
+
+# Which skill each side rolls. 5e lets the defender pick Acrobatics instead of
+# Athletics; the ghost takes the better of the two rather than asking, because
+# a prompt in the middle of a grapple is worse than a favourable reading.
+CONTESTS = {
+    "grapple": ("athletics", ("athletics", "acrobatics"), "grappled"),
+    "shove": ("athletics", ("athletics", "acrobatics"), "prone"),
+    "disarm": ("athletics", ("athletics", "acrobatics"), None),
+}
+
+
+async def _do_contest(
+    client, actor_uuid: str, target_uuid: str, intent: Intent, as_player: str | None
+) -> Outcome:
+    """Resolve a grapple, shove or disarm as opposed checks."""
+    kind = intent.contest or "grapple"
+    attacker_skill, defender_options, applies = CONTESTS[kind]
+
+    actor_name = _display_name(client, actor_uuid, intent.actor)
+    target_name = _display_name(client, target_uuid, intent.target)
+
+    attack_roll, attack_bonus, _ = await sheet.roll_check(
+        client, actor_uuid, attacker_skill, bias=intent.bias, as_player=as_player or actor_name
+    )
+
+    # The defender's better option, decided before rolling so only one die is
+    # thrown -- rolling both and picking would be two rolls in the log for one
+    # contest, which reads as a bug at the table.
+    target_sheet = await sheet.read_sheet(client, target_uuid)
+    best = max(defender_options, key=lambda s: sheet.skill_bonus(target_sheet, s)[0])
+    defend_roll, defend_bonus, _ = await sheet.roll_check(
+        client, target_uuid, best, as_player=target_name
+    )
+
+    out = Outcome(True, [
+        f"{actor_name} tries to {kind} {target_name}: "
+        f"{attack_roll.total} ({sheet.signed(attack_bonus)} {attacker_skill.title()}) "
+        f"against {defend_roll.total} ({sheet.signed(defend_bonus)} {best.title()})."
+    ])
+
+    # Ties go to the defender: 5e resolves a tied contest as no change.
+    if attack_roll.total <= defend_roll.total:
+        return out.say(f"{target_name} holds firm.")
+
+    if applies is None:
+        return out.say(f"{target_name} is disarmed.")
+
+    await sheet.set_condition(client, target_uuid, applies, True)
+    return out.say(f"{target_name} is {applies}.")
+
+
+async def _do_cast(
+    client, actor_uuid: str, target_uuid: str | None, intent: Intent, as_player: str | None
+) -> Outcome:
+    """Cast a prepared levelled spell, spending a slot."""
+    actor_name = _display_name(client, actor_uuid, intent.actor)
+    caster = await sheet.read_sheet(client, actor_uuid)
+    spell = sheet.find_prepared(caster, intent.spell or "")
+
+    if spell is None:
+        # "casts" was already a cantrip verb before levelled spells existed, so
+        # fall back to the equipped cantrip rather than rejecting a phrasing
+        # that used to work. Only when the name actually matches it: silently
+        # firing a cantrip at somebody who asked for Magic Missile would be
+        # worse than saying no.
+        equipped = ((caster or {}).get("derived") or {}).get("cantrip") or {}
+        spoken = (intent.spell or "").lower()
+        label = str(equipped.get("name", "")).lower()
+        if label and (label in spoken or spoken in label):
+            if target_uuid is None:
+                return Outcome(False, [f"{equipped.get('name')} needs a target."])
+            return await _do_attack(
+                client, actor_uuid, target_uuid, actor_name,
+                _display_name(client, target_uuid, intent.target),
+                Intent(Action.ATTACK, actor=intent.actor, target=intent.target,
+                       kind=AttackKind.CANTRIP, bias=intent.bias, raw=intent.raw),
+                as_player,
+            )
+        return Outcome(
+            False,
+            [
+                f"{actor_name} has not prepared {intent.spell!r}. "
+                f"Prepared: {_prepared_list(caster) or 'nothing'}."
+            ],
+        )
+
+    ok, left = await sheet.spend_slot(client, actor_uuid, int(spell.get("level") or 1))
+    if not ok:
+        return Outcome(False, [f"{actor_name} has no level {spell.get('level')} slots left."])
+
+    name = spell.get("name") or intent.spell
+    out = Outcome(True, [f"{actor_name} casts {name} ({left} slot(s) left)."])
+    target_name = _display_name(client, target_uuid, intent.target) if target_uuid else None
+
+    kind = spell.get("kind")
+
+    if kind == "buff":
+        bonus = spell.get("acBonus")
+        subject = target_uuid or actor_uuid
+        subject_name = target_name or actor_name
+        if bonus:
+            total = await sheet.set_ac_modifier(
+                client, subject, int(bonus["value"]), name, bonus.get("rounds")
+            )
+            return out.say(f"{subject_name} is now AC {total}.")
+        return out.say(f"{subject_name} is affected for {spell.get('duration') or 'the duration'}.")
+
+    if kind == "heal":
+        if target_uuid is None:
+            return out.say(f"{name} needs a target.")
+        roll = await client.roll_dice(spell["healing"], share_with="all", as_player=as_player or actor_name)
+        healed = await sheet.damage(client, target_uuid, -roll.total)
+        for line in await deathsaves.on_healed(client, target_uuid, target_name or "the target"):
+            out.say(line)
+        return out.say(f"{target_name} regains {roll.total} hit points, now on {healed['current']}.")
+
+    if target_uuid is None:
+        return out.say(f"{name} needs a target.")
+
+    if kind == "save":
+        dc = spell.get("saveDc")
+        ability = spell.get("save") or "dex"
+        damage = await client.roll_dice(spell["damage"], share_with="all", as_player=as_player or actor_name)
+        result, _ = await sheet.roll_save(client, target_uuid, ability, as_player=target_name)
+        made = result.total >= int(dc or 0)
+        amount = damage.total
+        if made and spell.get("halfOnSave"):
+            amount = damage.total // 2
+        elif made:
+            amount = 0
+        out.say(
+            f"{target_name} rolls {result.total} against DC {dc} {ability.upper()}: "
+            f"{'saves' if made else 'fails'}."
+        )
+        return await _land(client, target_uuid, target_name, amount, out)
+
+    if kind == "auto":
+        damage = await client.roll_dice(spell["damage"], share_with="all", as_player=as_player or actor_name)
+        out.say(f"{name} strikes automatically.")
+        return await _land(client, target_uuid, target_name, damage.total, out)
+
+    # An attack-roll spell.
+    notation = spell.get(
+        {"advantage": "attackAdvantage", "disadvantage": "attackDisadvantage"}.get(intent.bias, "attack")
+    )
+    to_hit = await client.roll_dice(notation, share_with="all", as_player=as_player or actor_name)
+    armour_class = sheet.armour_class(await sheet.read_sheet(client, target_uuid))
+    damage = await client.roll_dice(spell["damage"], share_with="all", as_player=as_player or actor_name)
+    if armour_class is None:
+        return out.say(f"{to_hit.total} to hit -- {target_name} has no AC on file, so call it at the table.")
+    if to_hit.total < armour_class:
+        return out.say(f"{to_hit.total} misses AC {armour_class}.")
+    out.say(f"{to_hit.total} hits AC {armour_class}.")
+    return await _land(client, target_uuid, target_name, damage.total, out)
+
+
+async def _land(client, target_uuid: str, target_name: str | None, amount: int, out: Outcome) -> Outcome:
+    """Apply damage and report, including anyone dropped to zero."""
+    if amount <= 0:
+        return out.say(f"{target_name} takes no damage.")
+    after = await sheet.damage(client, target_uuid, amount)
+    out.say(f"{target_name} takes {amount}, down to {after['current']}.")
+    if after["current"] <= 0:
+        for line in await deathsaves.on_dropped_to_zero(client, target_uuid, target_name or "it"):
+            out.say(line)
+    return out
+
+
+def _prepared_list(caster: dict[str, Any] | None) -> str:
+    spells = ((caster or {}).get("derived") or {}).get("spells") or []
+    return ", ".join(str(s.get("name")) for s in spells)
+
+
+async def _do_ac_modifier(client, target_uuid: str, intent: Intent) -> Outcome:
+    """Add or clear a temporary change to armour class.
+
+    The modifier is written onto the sheet rather than applied to `ac` directly
+    so that it stays visible and removable: "AC 17" tells nobody why, whereas
+    "+2 half cover" can be cleared when the creature steps out from behind the
+    wall. `deriveSheet` in the mod folds the list back into `ac`, and the ghost
+    reads the total through `sheet.armour_class`.
+    """
+    name = _display_name(client, target_uuid, intent.actor)
+    data = await sheet.read_sheet(client, target_uuid)
+    if data is None:
+        return Outcome(False, [f"{name} has no sheet, so there is no armour class to change."])
+
+    existing = list(data.get("acModifiers") or [])
+
+    if intent.ac_delta is None:
+        if not existing:
+            return Outcome(True, [f"{name} has no temporary armour class changes."])
+        data["acModifiers"] = []
+        await _write_ac(client, target_uuid, data)
+        dropped = ", ".join(m.get("source") or "unnamed" for m in existing)
+        return Outcome(True, [f"Cleared {len(existing)} modifier(s) from {name}: {dropped}."])
+
+    source = intent.ac_source or ("cover" if intent.ac_delta > 0 else "penalty")
+    duration: dict[str, Any] = (
+        {"kind": "rounds", "remaining": intent.ac_rounds}
+        if intent.ac_rounds
+        else {"kind": "manual"}
+    )
+    existing.append(
+        {
+            "id": str(uuid.uuid4()),
+            "source": source,
+            "value": intent.ac_delta,
+            "duration": duration,
+        }
+    )
+    data["acModifiers"] = existing
+    total = await _write_ac(client, target_uuid, data)
+
+    lasts = f" for {intent.ac_rounds} round(s)" if intent.ac_rounds else ""
+    sign = "+" if intent.ac_delta > 0 else ""
+    return Outcome(True, [f"{name} takes {sign}{intent.ac_delta} AC from {source}{lasts}, now AC {total}."])
+
+
+async def _write_ac(client, shape: str, data: dict[str, Any]) -> int:
+    """Persist modifiers and keep the flat `ac` in step.
+
+    The mod recomputes `ac` from armour whenever the editor saves, but the editor
+    may not be open -- so the ghost has to do the same sum itself or the token's
+    AC tracker would keep showing the old number until someone clicked the tab.
+    Only the modifier total is recomputed here; the armour and Dexterity part is
+    taken from the breakdown the mod already wrote.
+    """
+    block = (data.get("derived") or {}).get("ac") or {}
+    modifiers = sum(int(m.get("value") or 0) for m in data.get("acModifiers") or [])
+    without_mods = int(block.get("total") or data.get("ac") or 10) - int(block.get("modifiers") or 0)
+    total = without_mods + modifiers
+
+    data["ac"] = total
+    if block:
+        block["modifiers"] = modifiers
+        block["total"] = total
+
+    await sheet.write_sheet(client, shape, data)
+    return total
 
 
 async def _do_heal(client, target_uuid: str, intent: Intent) -> Outcome:
@@ -364,7 +683,7 @@ async def _do_attack(
             )
 
     target_sheet = await sheet.read_sheet(client, target_uuid)
-    armour_class = int((target_sheet or {}).get("ac") or 0) or None
+    armour_class = sheet.armour_class(target_sheet)
 
     rolls = await sheet.roll_attack(
         client, actor_uuid, kind, bias=intent.bias, as_player=as_player or actor_name

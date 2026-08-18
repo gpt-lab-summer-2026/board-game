@@ -1,0 +1,1 @@
+import{G as e}from"./3d-BaFzhQSY.js";export{e as fxaaPixelShaderWGSL};

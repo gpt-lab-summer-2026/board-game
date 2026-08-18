@@ -61,6 +61,35 @@ export interface Weapon {
  * exist too and roll no attack at all, so `kind` distinguishes them rather than
  * pretending every cantrip is an attack.
  */
+/**
+ * Armour weights, which differ only in how much Dexterity they let through.
+ * A shield is not a weight in 5e, but it sits in the same table here because
+ * it is the other thing that occupies an armour slot and adds to AC.
+ */
+export type ArmourWeight = "light" | "medium" | "heavy" | "shield";
+
+export interface Armour {
+    id: string;
+    name: string;
+    weight: ArmourWeight;
+    /** Base AC before Dexterity. For a shield, the bonus it adds instead. */
+    baseAc: number;
+    /**
+     * How much of the Dexterity modifier reaches AC.
+     *
+     * `null` is uncapped (light armour and no armour), `0` lets none through
+     * (heavy), and a number caps it (medium, at 2). Storing the cap rather than
+     * branching on `weight` means a homebrew breastplate that allows +3 is a
+     * catalogue edit and not a code change.
+     */
+    dexCap: number | null;
+    /** Minimum Strength score; below it, speed drops by 10 feet. */
+    strength?: number;
+    stealthDisadvantage?: boolean;
+    /** Scales, thick hide, chitin -- worn by the creature, not put on. */
+    natural?: boolean;
+}
+
 export interface Cantrip {
     id: string;
     name: string;
@@ -90,6 +119,50 @@ export interface Cantrip {
  * is the one hook into PA's own state: an unconscious creature should show
  * the defeated marker without anyone having to set it twice.
  */
+/**
+ * How a level-1 spell resolves.
+ *
+ * Cantrips get their own type because they never consume a slot and their dice
+ * scale with character level; a levelled spell instead spends from a pool and
+ * scales by being cast from a higher slot. Keeping them apart avoids a single
+ * type where half the fields are meaningless in either direction.
+ */
+export type SpellKind = "attack" | "save" | "auto" | "heal" | "buff";
+
+export type AreaShape = "cone" | "cube" | "sphere" | "line";
+
+export interface Spell {
+    id: string;
+    name: string;
+    /** Slot level. Only 1 exists so far; the field is here so 2 is a data edit. */
+    level: number;
+    classes: string[];
+    kind: SpellKind;
+    /** Damage dice before any modifier. */
+    damage?: string;
+    damageType?: string;
+    /** Healing dice; the casting ability modifier is added on top. */
+    healing?: string;
+    range: string;
+    /** For `kind: "save"`, the ability the target rolls. */
+    save?: AbilityKey;
+    /** Area damage usually still does half on a successful save. */
+    halfOnSave?: boolean;
+    area?: { shape: AreaShape; size: number };
+    /**
+     * A temporary armour class change, in the same shape the sheet stores.
+     * `rounds: null` means it lasts until dismissed, which is how the editor
+     * renders a concentration effect with no fixed timer.
+     */
+    acBonus?: { value: number; rounds: number | null };
+    concentration?: boolean;
+    duration?: string;
+    /** Not every spell costs an action. */
+    castingTime?: "action" | "bonus" | "reaction";
+    applies?: { condition: string; save?: AbilityKey };
+    text: string;
+}
+
 export interface Condition {
     id: string;
     name: string;
@@ -133,17 +206,22 @@ export interface ClassDef extends Trait {
  * v5 added weapon/cantrip `applies`, plus bleeding and slowed.
  * v6 dropped the Lacerating blade: weapon actions are derived from damage
  *    type in rules.ts, so every sword gets Lacerate without an entry.
+ * v7 added armour and shields, so AC derives from gear and Dexterity instead
+ *    of being a number somebody typed.
+ * v8 added levelled spells and slots for wizard and cleric.
  */
-export const CATALOGUE_VERSION = 6;
+export const CATALOGUE_VERSION = 8;
 
 // A `type`, not an `interface` -- see the note on CharacterSheet in data.ts.
 export type Catalogue = {
     version: number;
     weapons: Weapon[];
+    armour: Armour[];
     races: Trait[];
     backgrounds: Trait[];
     classes: ClassDef[];
     cantrips: Cantrip[];
+    spells: Spell[];
     conditions: Condition[];
 };
 
@@ -169,6 +247,27 @@ export function defaultCatalogue(): Catalogue {
             { id: "claws", name: "Claws", kind: "melee", damage: "2d6", damageType: "slashing", natural: true },
             { id: "bite", name: "Bite", kind: "melee", damage: "1d8", damageType: "piercing", natural: true },
             { id: "hooves", name: "Hooves", kind: "melee", damage: "1d6", damageType: "bludgeoning", natural: true },
+        ],
+        armour: [
+            { id: "padded", name: "Padded", weight: "light", baseAc: 11, dexCap: null, stealthDisadvantage: true },
+            { id: "leather", name: "Leather", weight: "light", baseAc: 11, dexCap: null },
+            { id: "studded-leather", name: "Studded leather", weight: "light", baseAc: 12, dexCap: null },
+
+            { id: "hide", name: "Hide", weight: "medium", baseAc: 12, dexCap: 2 },
+            { id: "chain-shirt", name: "Chain shirt", weight: "medium", baseAc: 13, dexCap: 2 },
+            { id: "scale-mail", name: "Scale mail", weight: "medium", baseAc: 14, dexCap: 2, stealthDisadvantage: true },
+            { id: "half-plate", name: "Half plate", weight: "medium", baseAc: 15, dexCap: 2, stealthDisadvantage: true },
+
+            { id: "ring-mail", name: "Ring mail", weight: "heavy", baseAc: 14, dexCap: 0, stealthDisadvantage: true },
+            { id: "chain-mail", name: "Chain mail", weight: "heavy", baseAc: 16, dexCap: 0, strength: 13, stealthDisadvantage: true },
+            { id: "splint", name: "Splint", weight: "heavy", baseAc: 17, dexCap: 0, strength: 15, stealthDisadvantage: true },
+            { id: "plate", name: "Plate", weight: "heavy", baseAc: 18, dexCap: 0, strength: 15, stealthDisadvantage: true },
+
+            { id: "shield", name: "Shield", weight: "shield", baseAc: 2, dexCap: null },
+
+            // For the Beast class and monsters: armour that cannot be removed.
+            { id: "thick-hide", name: "Thick hide", weight: "medium", baseAc: 12, dexCap: 2, natural: true },
+            { id: "scaled-hide", name: "Scaled hide", weight: "heavy", baseAc: 15, dexCap: 0, natural: true },
         ],
         races: [
             { id: "human", name: "Human", passive: { name: "Versatile", text: "+1 to every ability score." } },
@@ -206,6 +305,65 @@ export function defaultCatalogue(): Catalogue {
             { id: "restrained", name: "Restrained", short: "RSTR", text: "Speed 0. Attacks against it have advantage, its own have disadvantage, and DEX saves have disadvantage." },
             { id: "stunned", name: "Stunned", short: "STUN", text: "Incapacitated, can't move, and fails STR and DEX saves. Attacks against it have advantage." },
             { id: "unconscious", name: "Unconscious", short: "UNC", text: "Incapacitated, prone, and unaware. Attacks within 5 ft are critical hits.", impliesDefeated: true },
+        ],
+        spells: [
+            // -- Wizard ------------------------------------------------------
+            {
+                id: "magic-missile", name: "Magic Missile", level: 1, classes: ["wizard"], kind: "auto",
+                damage: "3d4+3", damageType: "force", range: "120",
+                text: "Three darts of force, each hitting for 1d4+1. No attack roll and no save: the darts simply strike.",
+            },
+            {
+                id: "burning-hands", name: "Burning Hands", level: 1, classes: ["wizard"], kind: "save",
+                damage: "3d6", damageType: "fire", range: "self", save: "dex", halfOnSave: true,
+                area: { shape: "cone", size: 15 },
+                text: "A cone of flame. Each creature in it makes a Dexterity save for half. Unattended flammable objects catch fire.",
+            },
+            {
+                id: "thunderwave", name: "Thunderwave", level: 1, classes: ["wizard"], kind: "save",
+                damage: "2d8", damageType: "thunder", range: "self", save: "con", halfOnSave: true,
+                area: { shape: "cube", size: 15 },
+                text: "A wave of force. On a failed Constitution save a creature is also pushed 10 feet away.",
+            },
+            {
+                id: "chromatic-orb", name: "Chromatic Orb", level: 1, classes: ["wizard"], kind: "attack",
+                damage: "3d8", damageType: "chosen", range: "90",
+                text: "A hurled orb of one chosen energy type: acid, cold, fire, lightning, poison or thunder.",
+            },
+            {
+                id: "shield-spell", name: "Shield", level: 1, classes: ["wizard"], kind: "buff",
+                range: "self", castingTime: "reaction", acBonus: { value: 5, rounds: 1 },
+                duration: "until the start of your next turn",
+                text: "A reaction, cast when you are hit: +5 AC, which can turn the triggering hit into a miss.",
+            },
+
+            // -- Cleric ------------------------------------------------------
+            {
+                id: "cure-wounds", name: "Cure Wounds", level: 1, classes: ["cleric"], kind: "heal",
+                healing: "1d8", range: "touch",
+                text: "A touch restores 1d8 plus your spellcasting modifier. No effect on constructs or undead.",
+            },
+            {
+                id: "healing-word", name: "Healing Word", level: 1, classes: ["cleric"], kind: "heal",
+                healing: "1d4", range: "60", castingTime: "bonus",
+                text: "A bonus action at range: 1d4 plus your spellcasting modifier. The usual way to get somebody off death saves.",
+            },
+            {
+                id: "guiding-bolt", name: "Guiding Bolt", level: 1, classes: ["cleric"], kind: "attack",
+                damage: "4d6", damageType: "radiant", range: "120",
+                text: "A ranged spell attack. On a hit the next attack roll against the target has advantage.",
+            },
+            {
+                id: "bless", name: "Bless", level: 1, classes: ["cleric"], kind: "buff",
+                range: "30", concentration: true, duration: "1 minute",
+                text: "Up to three creatures add 1d4 to every attack roll and saving throw while you concentrate.",
+            },
+            {
+                id: "shield-of-faith", name: "Shield of Faith", level: 1, classes: ["cleric"], kind: "buff",
+                range: "60", concentration: true, duration: "10 minutes",
+                acBonus: { value: 2, rounds: null },
+                text: "A shimmering field grants a creature +2 AC while you concentrate.",
+            },
         ],
         cantrips: [
             { id: "fire-bolt", name: "Fire Bolt", classes: ["wizard"], kind: "attack", damage: "1d10", damageType: "fire", range: "120", text: "A mote of fire hurled at a target. Flammable objects not being worn or carried are ignited." },
@@ -263,15 +421,19 @@ function migrate(cat: Catalogue): boolean {
     const defaults = defaultCatalogue();
 
     cat.weapons ??= [];
+    cat.armour ??= [];
     cat.races ??= [];
     cat.backgrounds ??= [];
     cat.classes ??= [];
     cat.cantrips ??= [];
+    cat.spells ??= [];
     cat.conditions ??= [];
 
     addMissing(cat.weapons, defaults.weapons);
+    addMissing(cat.armour, defaults.armour);
     addMissing(cat.classes, defaults.classes);
     addMissing(cat.cantrips, defaults.cantrips);
+    addMissing(cat.spells, defaults.spells);
     addMissing(cat.conditions, defaults.conditions);
 
     // v1 shipped Wizard and Cleric without a spellcasting ability, so cantrips
@@ -304,6 +466,29 @@ export function saveCatalogue(): void {
 
 export function findWeapon(id: string | null): Weapon | undefined {
     return id === null ? undefined : current.value.weapons.find((w) => w.id === id);
+}
+
+export function findSpell(id: string | null): Spell | undefined {
+    return id === null ? undefined : current.value.spells.find((s) => s.id === id);
+}
+
+/** Every levelled spell a class can cast, for the prepared-spell picker. */
+export function spellsForClass(classId: string | null): Spell[] {
+    if (classId === null) return [];
+    return current.value.spells.filter((s) => s.classes.includes(classId));
+}
+
+export function findArmour(id: string | null): Armour | undefined {
+    return id === null ? undefined : current.value.armour.find((a) => a.id === id);
+}
+
+/** Body armour, i.e. everything that is not a shield. */
+export function bodyArmour(): Armour[] {
+    return current.value.armour.filter((a) => a.weight !== "shield");
+}
+
+export function shields(): Armour[] {
+    return current.value.armour.filter((a) => a.weight === "shield");
 }
 
 export function weaponsOfKind(kind: WeaponKind): Weapon[] {

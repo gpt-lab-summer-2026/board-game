@@ -1,0 +1,1 @@
+import{i as e}from"./socket-C40cI0Sq.js";import{u as t}from"./index-BwCYgvnj.js";var n=e.socket(`/admin`);n.on(`disconnect`,async()=>{console.log(`[Admin] disconnected`),await t.push(`/dashboard`)});export{n as t};

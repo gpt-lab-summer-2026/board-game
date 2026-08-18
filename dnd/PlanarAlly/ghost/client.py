@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import quote
@@ -107,6 +108,14 @@ class GhostClient:
         self._connected = asyncio.Event()
         self._board_ready = asyncio.Event()
         self._grid_known = False
+        # Re-entrancy guard: a turn change can arrive twice (the DM's own emit
+        # and the server's broadcast), and ticking a duration twice would halve
+        # its length.
+        self._turn_hook_busy = False
+        # Set by the console, so anything the ghost notices on its own -- a
+        # modifier wearing off -- reaches the combat log rather than only the
+        # server log.
+        self.on_narration: Callable[[str], Awaitable[None]] | None = None
         self._register_handlers()
 
     # ---- connection ---------------------------------------------------------
@@ -370,6 +379,33 @@ class GhostClient:
                     {"x": data.get("x"), "y": data.get("y")}
                 )
                 log.info("shape moved: %s -> (%s,%s)", uuid, data.get("x"), data.get("y"))
+
+        @self.sio.on("Initiative.Turn.Update", namespace=ns)
+        async def turn_advanced(data):
+            """Count sheet-held durations down when the DM moves the turn on.
+
+            The browser ticks PlanarAlly's own initiative effects; anything the
+            character sheet mod owns -- a +2 that lasts two rounds -- is invisible
+            to it, so the ghost does that half. Imported here rather than at module
+            scope: `turns` imports `sheet`, which imports this module.
+            """
+            from . import turns  # noqa: PLC0415 - circular at import time
+
+            if self._turn_hook_busy:
+                return
+            self._turn_hook_busy = True
+            try:
+                lines = await turns.tick_durations(client=self, shapes=list(self.state.shapes))
+                for line in lines:
+                    log.info("duration: %s", line)
+                if lines and self.on_narration is not None:
+                    await self.on_narration(" ".join(lines))
+            except Exception:
+                # A failed tick must not take the socket handler down with it;
+                # the next turn will try again.
+                log.exception("could not tick durations on turn %r", data)
+            finally:
+                self._turn_hook_busy = False
 
         @self.sio.on("*", namespace=ns)
         async def catch_all(event, data=None):
