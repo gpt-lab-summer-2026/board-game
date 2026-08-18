@@ -1,9 +1,11 @@
 # Vendored/generated assets -- large, fetched separately, never tracked here
 llama.cpp/
-models/
-darknet/
+llama.cpp/models/
 voice/models/
+darknet/
 *.gguf
+*.onnx
+*.bin
 
 # Python
 __pycache__/
@@ -11,6 +13,7 @@ __pycache__/
 .venv/
 game-venv/
 dnd-venv/
+.env
 
 # Node
 node_modules/
