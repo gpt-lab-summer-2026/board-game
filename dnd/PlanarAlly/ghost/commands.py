@@ -27,6 +27,8 @@ class Action(str, Enum):
     MEASURE = "measure"
     DUPLICATE = "duplicate"
     CONDITION = "condition"
+    DEATH_SAVE = "death_save"
+    HEAL = "heal"
     CONFIRM = "confirm"
     CANCEL = "cancel"
     HELP = "help"
@@ -46,6 +48,8 @@ class Intent:
     bias: str = "normal"
     condition: str | None = None
     condition_on: bool = True
+    """How much a heal restores; None means "just enough to be conscious"."""
+    heal_amount: int | None = None
     raw: str = ""
 
 
@@ -95,6 +99,20 @@ _DUPLICATE_RE = re.compile(
     re.I,
 )
 
+# "atton death save", "roll a death save for atton", "death saving throw atton"
+_DEATH_SAVE_RE = re.compile(
+    r"^\s*(?:(?:roll\s+)?(?:a\s+)?death\s+sav(?:e|ing\s+throw)\s+(?:for\s+)?(?P<b>.+?)"
+    r"|(?P<a>.+?)\s+(?:rolls?\s+)?(?:a\s+)?death\s+sav(?:e|ing\s+throw))\s*$",
+    re.I,
+)
+
+# "heal atton 5", "heal atton for 5 hit points"
+_HEAL_RE = re.compile(
+    r"^\s*(?:heal|heals|healing)\s+(?P<who>.+?)(?:\s+(?:for|by)?\s*(?P<amount>\d+))?"
+    r"(?:\s+(?:hit\s+points?|hp))?\s*$",
+    re.I,
+)
+
 _MEASURE_RE = re.compile(
     r"^\s*(?:measure|distance|ruler|how\s+far(?:\s+is)?)\s+"
     r"(?:from\s+|between\s+)?(?P<a>.+?)\s+(?:to|from|and)\s+(?P<b>.+?)\s*$",
@@ -138,6 +156,25 @@ def parse(text: str) -> Intent:
             actor=_clean(cond['who'].split()) or None,
             condition=_clean(cond['cond'].split()).replace(' ', '-') or None,
             condition_on=cond['apply'] is not None,
+            raw=raw,
+        )
+
+    saved = _DEATH_SAVE_RE.match(lowered)
+    if saved:
+        who = _clean((saved["a"] or saved["b"] or "").split())
+        if not who:
+            raise ParseError("Death save for whom?")
+        return Intent(Action.DEATH_SAVE, actor=who, raw=raw)
+
+    healed = _HEAL_RE.match(lowered)
+    if healed:
+        who = _clean(healed["who"].split())
+        if not who:
+            raise ParseError("Heal whom?")
+        return Intent(
+            Action.HEAL,
+            actor=who,
+            heal_amount=int(healed["amount"]) if healed["amount"] else None,
             raw=raw,
         )
 
@@ -226,5 +263,7 @@ HELP_TEXT = """Commands:
   duplicate <actor> [as <name>]         copy a character, sheet and all
   apply <condition> to <target>         prone, poisoned, stunned, ...
   clear <condition> from <target>       remove it again
+  <actor> death save                   roll a death saving throw for a downed PC
+  heal <actor> [for N]                 restore hit points; revived PCs rejoin the order
 Add "with advantage" or "with disadvantage" to any attack.
 When the only route crosses a hazard the ghost asks first: answer yes or no."""

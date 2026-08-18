@@ -1,0 +1,1 @@
+import{n as e}from"./Game-BIX2Ex0Z.js";export{e as default};

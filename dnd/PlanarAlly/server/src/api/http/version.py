@@ -16,7 +16,9 @@ try:
     env_version = release_version
 
     try:
-        env_version = subprocess.check_output(["git", "describe", "--tags"]).strip().decode("utf-8")
+        env_version = (
+            subprocess.check_output(["git", "describe", "--tags"], stderr=subprocess.DEVNULL).strip().decode("utf-8")
+        )
     except:
         pass
 
