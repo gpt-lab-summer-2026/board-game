@@ -1,3 +1,4 @@
 {
-  "python.analysis.extraPaths": ["./PlanarAlly/ghost"]
+  "python.analysis.extraPaths": ["./PlanarAlly/ghost"],
+  "python.defaultInterpreterPath": "${workspaceFolder}/dnd-venv/bin/python"
 }

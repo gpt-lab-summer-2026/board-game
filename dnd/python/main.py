@@ -119,7 +119,14 @@ def main():
             print(narration)
             speak(narration)
         except ParseError:
-            speak("Unclear, try again!")
+            # Not a recognised command shape -- either the literal "unclear"
+            # fallback, or a clarifying question/warning the prompt asked the
+            # LLM to ask instead of guessing. Either way, read it back rather
+            # than discarding it for a generic message.
+            if output_llm.strip().lower() == "unclear":
+                speak("Unclear, try again!")
+            else:
+                speak(output_llm)
 
 if __name__=="__main__":
     main()
