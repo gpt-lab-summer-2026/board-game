@@ -11,6 +11,23 @@ def postReq(message):
     print("post response status: ", res.status_code)
     return res.json()
 
+def getState():
+    """The board as a table, for pasting into the system prompt.
+
+    Returns an empty string if the ghost is unreachable rather than raising:
+    losing the facts should degrade the translator to its old guessy self, not
+    stop the game.
+    """
+    try:
+        res = requests.get(f"http://{args.host}:{args.port}/state",
+                           params={"format": "text"}, timeout=10)
+        res.raise_for_status()
+        return res.text
+    except Exception as e:
+        print("state unavailable: ", e)
+        return ""
+
+
 def getReq():
     res = requests.get(f"http://{args.host}:{args.port}/characters", )
     #print("get response: ", res.json()["characters"])

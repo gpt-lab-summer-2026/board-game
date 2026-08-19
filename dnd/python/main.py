@@ -7,11 +7,10 @@ from listen import *
 from llama_cpp import Llama
 from ghost_client import *
 from config import *
+from pipeline import vet, narrate, lines_of
 
 load_dotenv()
 from config import *
-
-load_dotenv()
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(SCRIPT_DIR, "..", "PlanarAlly", "ghost"))
@@ -80,9 +79,10 @@ def cluster_chat(history):
         print("Error: ", e)
 
 
-
 def main():
     #
+    print("loading text to speech")
+    warm_up()
     gameOn = True
     history = []
 
@@ -104,22 +104,39 @@ def main():
             output_llm = llama_chat_commands(history=history)
             print("llama return: ", output_llm)
 
-        # check output kind
-        try:
-            parse(output_llm)
-            res = postReq({"command": output_llm, "source":"voice"}) #post command and response in json
-            res_move = ' '.join(res["entries"][0]["lines"])
-            print(res_move)
+        # Route on the tag the model answered with, not on whether the line
+        # happens to parse. A question and a broken command both used to raise
+        # ParseError, so a perfectly good question was discarded as noise.
+        action, payload = vet(output_llm, user_input)
 
-            if CLUSTER_CHAT:
-                narration = cluster_chat(history=history)
-            else:
-                narration = llama_chat_commands(history=history)
+        if action == "say":      # a question back, or a refused command
+            print("asking: ", payload)
+            speak(payload)
+            continue
+        if action == "retry":
+            print("rejected: ", payload)
+            speak(payload)
+            continue
 
-            print(narration)
-            speak(narration)
-        except ParseError:
-            speak("Unclear, try again!")
+        res = postReq({"command": payload, "source": "voice"})
+        entry = res["entries"][0]
+        res_move = lines_of(res)
+        print(res_move)
+
+        # The ghost is holding a question of its own -- a hazard to accept, or a
+        # better place to stand that it has already drawn on the board. It is
+        # phrased for a person, so read it out as it stands and let the next
+        # utterance answer it: vet() maps "yeah, go on" to a plain yes.
+        if entry.get("awaiting"):
+            speak(res_move)
+            continue
+
+        # What actually happened, before narrating it. Without this the narrator
+        # only ever sees the request and describes that instead of the result.
+        history.append({"role": "user", "content": f"Result: {res_move}"})
+        narration = narrate(res_move, llm=None if CLUSTER_CHAT else llm)
+        print(narration)
+        speak(narration)
 
 if __name__=="__main__":
     main()
