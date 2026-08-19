@@ -13,222 +13,8 @@
 //
 // The default content is 5e SRD-flavoured. The SRD is CC-BY-4.0: fine here,
 // but it would need attribution if this mod were ever distributed.
-
-import type { DataBlock } from "@planarally/mod-api";
-import { ref, watch, type Ref } from "vue";
-
-import type { AbilityKey } from "./data";
-import { api } from "./main";
-
-export type WeaponKind = "melee" | "ranged";
-
-export interface Weapon {
-    id: string;
-    name: string;
-    kind: WeaponKind;
-    /** Dice notation without the ability modifier, e.g. "1d8". */
-    damage: string;
-    damageType: string;
-    /** Melee weapons flagged finesse may use DEX instead of STR. */
-    finesse?: boolean;
-    /** Normal/long range in feet, ranged weapons only. */
-    range?: string;
-    properties?: string[];
-    /**
-     * A condition this weapon inflicts on a hit.
-     *
-     * Applying it as part of the attack rather than as a second command is
-     * the point: at a table nobody says "I hit" and then separately "and it
-     * is bleeding" -- the effect is part of the blow. `save` makes it
-     * resistible; without one it simply lands.
-     */
-    applies?: { condition: string; save?: AbilityKey };
-    /**
-     * Claws, bite, hooves -- part of the creature rather than carried gear.
-     * Listed separately in the picker so a bear isn't rummaging through a
-     * weapon rack, but not restricted by class: a DM may well want a bear that
-     * throws a javelin.
-     */
-    natural?: boolean;
-}
-
-/**
- * A cantrip.
- *
- * Modelled on the ranged weapon rules, as asked: an attack roll against AC,
- * damage on a hit, and -- because a spell attack is a ranged attack --
- * disadvantage when a hostile creature is within 5 feet. Save-based cantrips
- * exist too and roll no attack at all, so `kind` distinguishes them rather than
- * pretending every cantrip is an attack.
- */
-/**
- * Armour weights, which differ only in how much Dexterity they let through.
- * A shield is not a weight in 5e, but it sits in the same table here because
- * it is the other thing that occupies an armour slot and adds to AC.
- */
-export type ArmourWeight = "light" | "medium" | "heavy" | "shield";
-
-export interface Armour {
-    id: string;
-    name: string;
-    weight: ArmourWeight;
-    /** Base AC before Dexterity. For a shield, the bonus it adds instead. */
-    baseAc: number;
-    /**
-     * How much of the Dexterity modifier reaches AC.
-     *
-     * `null` is uncapped (light armour and no armour), `0` lets none through
-     * (heavy), and a number caps it (medium, at 2). Storing the cap rather than
-     * branching on `weight` means a homebrew breastplate that allows +3 is a
-     * catalogue edit and not a code change.
-     */
-    dexCap: number | null;
-    /** Minimum Strength score; below it, speed drops by 10 feet. */
-    strength?: number;
-    stealthDisadvantage?: boolean;
-    /** Scales, thick hide, chitin -- worn by the creature, not put on. */
-    natural?: boolean;
-}
-
-export interface Cantrip {
-    id: string;
-    name: string;
-    /** Class ids that can learn it. A wizard should not be offered
-     *  Sacred Flame, and a fighter should not be offered anything. */
-    classes: string[];
-    kind: "attack" | "save";
-    /** Dice at level 1. Cantrips scale at 5/11/17; see rules.ts. */
-    damage: string;
-    damageType: string;
-    /** Range in feet, or "touch". */
-    range: string;
-    /** Melee spell attacks (touch range) don't take the close-range penalty. */
-    melee?: boolean;
-    /** For `kind: "save"`, which ability the target rolls. */
-    save?: AbilityKey;
-    /** A condition the cantrip inflicts. */
-    applies?: { condition: string; save?: AbilityKey };
-    text: string;
-}
-
-/**
- * A condition a creature can be under.
- *
- * PlanarAlly has no concept of these at all -- it tracks `is_defeated` and
- * nothing else -- so the whole vocabulary is defined here. `impliesDefeated`
- * is the one hook into PA's own state: an unconscious creature should show
- * the defeated marker without anyone having to set it twice.
- */
-/**
- * How a level-1 spell resolves.
- *
- * Cantrips get their own type because they never consume a slot and their dice
- * scale with character level; a levelled spell instead spends from a pool and
- * scales by being cast from a higher slot. Keeping them apart avoids a single
- * type where half the fields are meaningless in either direction.
- */
-export type SpellKind = "attack" | "save" | "auto" | "heal" | "buff";
-
-export type AreaShape = "cone" | "cube" | "sphere" | "line";
-
-export interface Spell {
-    id: string;
-    name: string;
-    /** Slot level. Only 1 exists so far; the field is here so 2 is a data edit. */
-    level: number;
-    classes: string[];
-    kind: SpellKind;
-    /** Damage dice before any modifier. */
-    damage?: string;
-    damageType?: string;
-    /** Healing dice; the casting ability modifier is added on top. */
-    healing?: string;
-    range: string;
-    /** For `kind: "save"`, the ability the target rolls. */
-    save?: AbilityKey;
-    /** Area damage usually still does half on a successful save. */
-    halfOnSave?: boolean;
-    area?: { shape: AreaShape; size: number };
-    /**
-     * A temporary armour class change, in the same shape the sheet stores.
-     * `rounds: null` means it lasts until dismissed, which is how the editor
-     * renders a concentration effect with no fixed timer.
-     */
-    acBonus?: { value: number; rounds: number | null };
-    concentration?: boolean;
-    duration?: string;
-    /** Not every spell costs an action. */
-    castingTime?: "action" | "bonus" | "reaction";
-    applies?: { condition: string; save?: AbilityKey };
-    text: string;
-}
-
-/**
- * Something a character carries and can use up.
- *
- * Separate from weapons and armour because the defining property is the
- * *charge*: a potion that has been drunk is gone, and the interesting state is
- * how many are left rather than what its statistics are.
- */
-export type ItemKind = "potion" | "grenade" | "utility";
-
-export interface Item {
-    id: string;
-    name: string;
-    kind: ItemKind;
-    /** Healing dice; the drinker's ability modifier is NOT added. */
-    healing?: string;
-    /** Damage dice for a thrown item. */
-    damage?: string;
-    damageType?: string;
-    /** Thrown range in feet. */
-    range?: number;
-    /** Radius in feet for anything that goes off in an area. */
-    area?: number;
-    /** Ability the target rolls to avoid it, if any. */
-    save?: AbilityKey;
-    /** A condition it inflicts on everything caught in it. */
-    applies?: { condition: string; save?: AbilityKey };
-    /** Costs a bonus action rather than an action. */
-    bonusAction?: boolean;
-    text: string;
-}
-
-export interface Condition {
-    id: string;
-    name: string;
-    text: string;
-    /** Short label for the token badge. */
-    short: string;
-    impliesDefeated?: boolean;
-}
-
-export interface Passive {
-    name: string;
-    text: string;
-}
-
-export interface Trait {
-    id: string;
-    name: string;
-    passive: Passive;
-}
-
-export interface ClassDef extends Trait {
-    hitDie: number;
-    /** What this class gains at 2nd level. The campaign stops there. */
-    level2?: Passive;
-    primaryAbility: AbilityKey;
-    savingThrows: AbilityKey[];
-    /**
-     * Which ability powers this class's spells. Absent for non-casters, which
-     * is not the same as "cannot cast": the sheet can override it, so a bear
-     * with a strange gift is a matter of picking an ability, not of editing
-     * the class.
-     */
-    spellcastingAbility?: AbilityKey;
-}
-
+import { ref, watch } from "vue";
+import { api } from "./main.js";
 /**
  * Bump when the defaults gain content that existing campaigns should receive.
  * v2 added natural weapons, the Beast class and cantrips.
@@ -244,24 +30,8 @@ export interface ClassDef extends Trait {
  * v10 added Ice Knife.
  */
 export const CATALOGUE_VERSION = 10;
-
-// A `type`, not an `interface` -- see the note on CharacterSheet in data.ts.
-export type Catalogue = {
-    version: number;
-    weapons: Weapon[];
-    armour: Armour[];
-    races: Trait[];
-    backgrounds: Trait[];
-    classes: ClassDef[];
-    cantrips: Cantrip[];
-    spells: Spell[];
-    items: Item[];
-    conditions: Condition[];
-};
-
 const BLOCK_NAME = "catalogue";
-
-export function defaultCatalogue(): Catalogue {
+export function defaultCatalogue() {
     return {
         version: CATALOGUE_VERSION,
         weapons: [
@@ -270,12 +40,10 @@ export function defaultCatalogue(): Catalogue {
             { id: "greataxe", name: "Greataxe", kind: "melee", damage: "1d12", damageType: "slashing", properties: ["heavy", "two-handed"] },
             { id: "rapier", name: "Rapier", kind: "melee", damage: "1d8", damageType: "piercing", finesse: true },
             { id: "quarterstaff", name: "Quarterstaff", kind: "melee", damage: "1d6", damageType: "bludgeoning", properties: ["versatile (1d8)"] },
-
             { id: "shortbow", name: "Shortbow", kind: "ranged", damage: "1d6", damageType: "piercing", range: "80/320", properties: ["two-handed"] },
             { id: "light-crossbow", name: "Light crossbow", kind: "ranged", damage: "1d8", damageType: "piercing", range: "80/320", properties: ["loading", "two-handed"] },
             { id: "sling", name: "Sling", kind: "ranged", damage: "1d4", damageType: "bludgeoning", range: "30/120" },
             { id: "javelin", name: "Javelin", kind: "ranged", damage: "1d6", damageType: "piercing", range: "30/120", properties: ["thrown"] },
-
             // Natural weapons, for creatures rather than adventurers. The
             // numbers are a brown bear's.
             { id: "claws", name: "Claws", kind: "melee", damage: "2d6", damageType: "slashing", natural: true },
@@ -286,19 +54,15 @@ export function defaultCatalogue(): Catalogue {
             { id: "padded", name: "Padded", weight: "light", baseAc: 11, dexCap: null, stealthDisadvantage: true },
             { id: "leather", name: "Leather", weight: "light", baseAc: 11, dexCap: null },
             { id: "studded-leather", name: "Studded leather", weight: "light", baseAc: 12, dexCap: null },
-
             { id: "hide", name: "Hide", weight: "medium", baseAc: 12, dexCap: 2 },
             { id: "chain-shirt", name: "Chain shirt", weight: "medium", baseAc: 13, dexCap: 2 },
             { id: "scale-mail", name: "Scale mail", weight: "medium", baseAc: 14, dexCap: 2, stealthDisadvantage: true },
             { id: "half-plate", name: "Half plate", weight: "medium", baseAc: 15, dexCap: 2, stealthDisadvantage: true },
-
             { id: "ring-mail", name: "Ring mail", weight: "heavy", baseAc: 14, dexCap: 0, stealthDisadvantage: true },
             { id: "chain-mail", name: "Chain mail", weight: "heavy", baseAc: 16, dexCap: 0, strength: 13, stealthDisadvantage: true },
             { id: "splint", name: "Splint", weight: "heavy", baseAc: 17, dexCap: 0, strength: 15, stealthDisadvantage: true },
             { id: "plate", name: "Plate", weight: "heavy", baseAc: 18, dexCap: 0, strength: 15, stealthDisadvantage: true },
-
             { id: "shield", name: "Shield", weight: "shield", baseAc: 2, dexCap: null },
-
             // For the Beast class and monsters: armour that cannot be removed.
             { id: "thick-hide", name: "Thick hide", weight: "medium", baseAc: 12, dexCap: 2, natural: true },
             { id: "scaled-hide", name: "Scaled hide", weight: "heavy", baseAc: 15, dexCap: 0, natural: true },
@@ -323,7 +87,6 @@ export function defaultCatalogue(): Catalogue {
             { id: "wizard", name: "Wizard", hitDie: 6, primaryAbility: "int", savingThrows: ["int", "wis"], spellcastingAbility: "int", passive: { name: "Arcane Recovery", text: "Once per day on a short rest, recover spell slots totalling half your level, rounded up." }, level2: { name: "Arcane Tradition", text: "Choose a school of magic; it grants features now and at higher levels." } },
             { id: "cleric", name: "Cleric", hitDie: 8, primaryAbility: "wis", savingThrows: ["wis", "cha"], spellcastingAbility: "wis", passive: { name: "Divine Domain", text: "Your chosen domain grants extra spells and a domain feature at 1st level." }, level2: { name: "Channel Divinity", text: "Turn Undead, plus one effect from your domain. Once per short rest." } },
             { id: "barbarian", name: "Barbarian", hitDie: 12, primaryAbility: "str", savingThrows: ["str", "con"], passive: { name: "Rage", text: "Advantage on Strength checks and saves, bonus melee damage, and resistance to physical damage." }, level2: { name: "Reckless Attack", text: "Advantage on melee Strength attacks this turn; attacks against you have it too." } },
-
             // For animal companions and monsters: a statline with no gear.
             { id: "beast", name: "Beast", hitDie: 10, primaryAbility: "str", savingThrows: ["str", "con"], passive: { name: "Keen Smell", text: "Advantage on Wisdom (Perception) checks that rely on smell. Fights with natural weapons and carries no equipment." }, level2: { name: "Pack Tactics", text: "Advantage on an attack if an ally is within 5 feet of the target." } },
         ],
@@ -409,7 +172,6 @@ export function defaultCatalogue(): Catalogue {
                 duration: "until the start of your next turn",
                 text: "A reaction, cast when you are hit: +5 AC, which can turn the triggering hit into a miss.",
             },
-
             // -- Cleric ------------------------------------------------------
             {
                 id: "cure-wounds", name: "Cure Wounds", level: 1, classes: ["cleric"], kind: "heal",
@@ -447,27 +209,19 @@ export function defaultCatalogue(): Catalogue {
         ],
     };
 }
-
-let block: DataBlock<Catalogue> | undefined;
-let pending: Promise<DataBlock<Catalogue> | undefined> | undefined;
-
-const current = ref<Catalogue>(defaultCatalogue());
-
-export const catalogue: Readonly<Ref<Catalogue>> = current;
-
-export function ensureCatalogue(): Promise<DataBlock<Catalogue> | undefined> {
+let block;
+let pending;
+const current = ref(defaultCatalogue());
+export const catalogue = current;
+export function ensureCatalogue() {
     // Memoised for the same reason as the preset library: getOrLoadDataBlock
     // only de-duplicates after its round-trip, so two callers racing on mount
     // would both issue a load and the loser would be handed `undefined`.
     pending ??= load();
     return pending;
 }
-
-async function load(): Promise<DataBlock<Catalogue> | undefined> {
-    const dataBlock = await api.getOrLoadDataBlock<Catalogue>(
-        { category: "room", name: BLOCK_NAME },
-        { defaultData: defaultCatalogue },
-    );
+async function load() {
+    const dataBlock = await api.getOrLoadDataBlock({ category: "room", name: BLOCK_NAME }, { defaultData: defaultCatalogue });
     if (dataBlock !== undefined) {
         block = dataBlock;
         if (!dataBlock.existsOnServer) {
@@ -477,18 +231,19 @@ async function load(): Promise<DataBlock<Catalogue> | undefined> {
             // reads this over the socket, then saw a campaign with no weapons,
             // no conditions and no items however many times the tab was opened.
             dataBlock.sync();
-        } else if (migrate(dataBlock.reactiveData.value)) {
+        }
+        else if (migrate(dataBlock.reactiveData.value)) {
             dataBlock.sync();
         }
         current.value = dataBlock.reactiveData.value;
         watch(dataBlock.reactiveData, (value) => {
-            if (migrate(value)) dataBlock.sync();
+            if (migrate(value))
+                dataBlock.sync();
             current.value = value;
         });
     }
     return dataBlock;
 }
-
 /**
  * Bring a campaign's stored catalogue up to the current defaults.
  *
@@ -498,10 +253,10 @@ async function load(): Promise<DataBlock<Catalogue> | undefined> {
  * character tab under v1 would have a `cantrips` key that simply isn't there,
  * and the Spellcasting section would iterate `undefined`.
  */
-function migrate(cat: Catalogue): boolean {
-    if ((cat.version ?? 1) >= CATALOGUE_VERSION) return false;
+function migrate(cat) {
+    if ((cat.version ?? 1) >= CATALOGUE_VERSION)
+        return false;
     const defaults = defaultCatalogue();
-
     // An *absent* key means the catalogue predates that content, so it gets the
     // defaults. An empty array means the DM deleted everything in it, and that
     // stays deleted -- which is why this is `??=` on the defaults rather than a
@@ -518,7 +273,6 @@ function migrate(cat: Catalogue): boolean {
     cat.spells ??= defaults.spells;
     cat.items ??= defaults.items;
     cat.conditions ??= defaults.conditions;
-
     addMissing(cat.weapons, defaults.weapons);
     addMissing(cat.armour, defaults.armour);
     addMissing(cat.classes, defaults.classes);
@@ -526,95 +280,81 @@ function migrate(cat: Catalogue): boolean {
     addMissing(cat.spells, defaults.spells);
     addMissing(cat.items, defaults.items);
     addMissing(cat.conditions, defaults.conditions);
-
     // v1 shipped Wizard and Cleric without a spellcasting ability, so cantrips
     // would have found no ability to cast with.
     for (const klass of cat.classes) {
-        if (klass.spellcastingAbility !== undefined) continue;
+        if (klass.spellcastingAbility !== undefined)
+            continue;
         const fresh = defaults.classes.find((c) => c.id === klass.id);
-        if (fresh?.spellcastingAbility !== undefined) klass.spellcastingAbility = fresh.spellcastingAbility;
+        if (fresh?.spellcastingAbility !== undefined)
+            klass.spellcastingAbility = fresh.spellcastingAbility;
     }
-
     cat.version = CATALOGUE_VERSION;
     return true;
 }
-
-function addMissing<T extends { id: string }>(existing: T[], defaults: T[]): void {
+function addMissing(existing, defaults) {
     const known = new Set(existing.map((e) => e.id));
-    for (const entry of defaults) if (!known.has(entry.id)) existing.push(entry);
+    for (const entry of defaults)
+        if (!known.has(entry.id))
+            existing.push(entry);
 }
-
-export function saveCatalogue(): void {
+export function saveCatalogue() {
     // First call also creates the row on the server; `sync()` handles that.
     block?.sync();
 }
-
 // ---- lookups ---------------------------------------------------------------
 //
 // All tolerant of a missing id: a sheet can outlive the catalogue entry it
 // points at (someone deletes a weapon), and that should blank the attack row,
 // not break the panel.
-
-export function findWeapon(id: string | null): Weapon | undefined {
+export function findWeapon(id) {
     return id === null ? undefined : current.value.weapons.find((w) => w.id === id);
 }
-
-export function findItem(id: string | null): Item | undefined {
+export function findItem(id) {
     return id === null ? undefined : current.value.items.find((i) => i.id === id);
 }
-
-export function findSpell(id: string | null): Spell | undefined {
+export function findSpell(id) {
     return id === null ? undefined : current.value.spells.find((s) => s.id === id);
 }
-
 /** Every levelled spell a class can cast, for the prepared-spell picker. */
-export function spellsForClass(classId: string | null): Spell[] {
-    if (classId === null) return [];
+export function spellsForClass(classId) {
+    if (classId === null)
+        return [];
     return current.value.spells.filter((s) => s.classes.includes(classId));
 }
-
-export function findArmour(id: string | null): Armour | undefined {
+export function findArmour(id) {
     return id === null ? undefined : current.value.armour.find((a) => a.id === id);
 }
-
 /** Body armour, i.e. everything that is not a shield. */
-export function bodyArmour(): Armour[] {
+export function bodyArmour() {
     return current.value.armour.filter((a) => a.weight !== "shield");
 }
-
-export function shields(): Armour[] {
+export function shields() {
     return current.value.armour.filter((a) => a.weight === "shield");
 }
-
-export function weaponsOfKind(kind: WeaponKind): Weapon[] {
+export function weaponsOfKind(kind) {
     return current.value.weapons.filter((w) => w.kind === kind);
 }
-
 /** Split by carried vs natural, so the picker can group them. */
-export function weaponGroups(kind: WeaponKind): { carried: Weapon[]; natural: Weapon[] } {
+export function weaponGroups(kind) {
     const all = weaponsOfKind(kind);
     return {
         carried: all.filter((w) => w.natural !== true),
         natural: all.filter((w) => w.natural === true),
     };
 }
-
-export function findCondition(id: string): Condition | undefined {
+export function findCondition(id) {
     return current.value.conditions.find((c) => c.id === id);
 }
-
-export function findCantrip(id: string | null): Cantrip | undefined {
+export function findCantrip(id) {
     return id === null ? undefined : current.value.cantrips.find((c) => c.id === id);
 }
-
-export function findRace(id: string | null): Trait | undefined {
+export function findRace(id) {
     return id === null ? undefined : current.value.races.find((r) => r.id === id);
 }
-
-export function findBackground(id: string | null): Trait | undefined {
+export function findBackground(id) {
     return id === null ? undefined : current.value.backgrounds.find((b) => b.id === id);
 }
-
-export function findClass(id: string | null): ClassDef | undefined {
+export function findClass(id) {
     return id === null ? undefined : current.value.classes.find((c) => c.id === id);
 }

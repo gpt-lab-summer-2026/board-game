@@ -355,6 +355,18 @@ class GhostClient:
             log.info("board received: %s", self.state.summary())
             self._board_ready.set()
 
+            # Clear decorations a previous run stranded on the draw layer.
+            # Folded into this handler rather than registered as a second one:
+            # python-socketio keeps a single handler per event, so adding
+            # another `Location.Loaded` silently *replaced* this one and the
+            # ghost never became ready again.
+            from . import ephemera  # noqa: PLC0415 - cycle at import time
+
+            try:
+                await ephemera.sweep_orphans(self)
+            except Exception:  # noqa: BLE001
+                log.exception("could not sweep old marks")
+
         @self.sio.on("Shape.Add", namespace=ns)
         async def shape_add(data):
             shape = data.get("shape", data)
@@ -403,7 +415,12 @@ class GhostClient:
                 return
             self._turn_hook_busy = True
             try:
+                from . import ephemera  # noqa: PLC0415 - same cycle as turns
+
                 lines = await turns.tick_durations(client=self, shapes=list(self.state.shapes))
+                # Ruler marks, suggestion highlights and spell effects all count
+                # their lives in turns, so they expire on the same beat.
+                lines.extend(f"{label}." for label in await ephemera.tick(self))
                 for line in lines:
                     log.info("duration: %s", line)
                 if lines and self.on_narration is not None:

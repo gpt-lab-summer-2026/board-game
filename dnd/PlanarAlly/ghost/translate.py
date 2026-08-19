@@ -27,7 +27,11 @@ from .commands import HELP_TEXT
 
 log = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "qwen3.6:latest"
+# The 70b, not the small model. Deciding what somebody meant is the one job in
+# this system where being wrong is silent -- a misread intent becomes a valid
+# command and executes -- and it is measurably no slower here: 0.5s warm against
+# 0.8s for qwen3.6, because the cluster keeps it resident.
+DEFAULT_MODEL = os.getenv("GHOST_MODEL", "llama3.3:70b")
 CMD_PREFIX = "CMD:"
 ASK_PREFIX = "ASK:"
 

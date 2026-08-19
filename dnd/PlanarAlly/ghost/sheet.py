@@ -478,6 +478,15 @@ async def set_condition(
     return conditions
 
 
+async def condition_label(client: GhostClient, condition_id: str) -> str:
+    """A condition's display name, falling back to its id."""
+    cat = await read_catalogue(client)
+    for entry in (cat or {}).get("conditions") or []:
+        if entry.get("id") == condition_id:
+            return str(entry.get("name") or condition_id)
+    return condition_id
+
+
 async def condition_names(client: GhostClient, ids: list[str]) -> list[str]:
     catalogue = await read_catalogue(client) or {}
     lookup = {c["id"]: c["name"] for c in catalogue.get("conditions", [])}
@@ -539,8 +548,33 @@ async def set_hp(
     return hp
 
 
+async def heal(client: GhostClient, shape: str, amount: int) -> dict[str, Any]:
+    """Restore hit points, never past the maximum.
+
+    A separate function rather than negative damage. `damage` spends temporary
+    hit points first, and that arithmetic inverts on a negative amount:
+    `min(temp, -6)` is -6, so the subtraction cancels out and the "healing"
+    lands in the temp pool instead. Two potions left a character on the same
+    hit points with twelve phantom temporary ones, and every line printed said
+    it had worked.
+    """
+    sheet = await read_sheet(client, shape)
+    if sheet is None:
+        raise KeyError(f"no sheet for shape {shape}")
+
+    hp = sheet["hp"]
+    restored = min(int(hp["max"]), max(0, int(hp["current"])) + max(0, int(amount)))
+    return await set_hp(client, shape, current=restored)
+
+
 async def damage(client: GhostClient, shape: str, amount: int) -> dict[str, Any]:
     """Apply damage, spending temporary hit points first as 5e does."""
+    if amount < 0:
+        # Callers used to express healing this way. Redirected rather than
+        # rejected, because the failure was silent and there may be more of
+        # them; `heal` is the function to reach for.
+        return await heal(client, shape, -amount)
+
     sheet = await read_sheet(client, shape)
     if sheet is None:
         raise KeyError(f"no sheet for shape {shape}")

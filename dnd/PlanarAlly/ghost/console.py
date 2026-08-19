@@ -16,6 +16,7 @@ without a good reason.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Awaitable, Callable
 
@@ -264,6 +265,10 @@ class Console:
         self._pending: Pending | None = None
         self.log: list[dict] = []
         self._seq = 0
+        # Strong references to in-flight narration tasks. asyncio only holds a
+        # weak one, so without this a mid-sentence task can be garbage collected
+        # and the ghost falls silent for no visible reason.
+        self._speaking: set[asyncio.Task] = set()
         # Let the client push its own observations into this log.
         client.on_narration = self._note
 
@@ -344,11 +349,21 @@ class Console:
         self._pending = outcome.pending
 
         if self.narrator is not None and outcome.lines:
-            try:
-                await self.narrator(outcome.text)
-            except Exception:  # noqa: BLE001 - narration is not worth failing over
-                log.exception("narration failed")
+            # Fire and forget. Awaiting this held the HTTP response open until
+            # the ghost had finished *speaking* -- thirty-odd seconds for a four
+            # line combat result -- so the panel sat spinning and the voice loop
+            # could not start listening again until the sentence it was already
+            # hearing had finished. The Narrator serialises internally, so
+            # overlapping results queue rather than talk over each other.
+            self._speaking.add(task := asyncio.create_task(self._narrate(outcome.text)))
+            task.add_done_callback(self._speaking.discard)
         return self._record(text, source, intent, outcome)
+
+    async def _narrate(self, text: str) -> None:
+        try:
+            await self.narrator(text)
+        except Exception:  # noqa: BLE001 - narration is not worth failing over
+            log.exception("narration failed")
 
     async def _ensure_connected(self) -> bool:
         if self.client.sio.connected:
@@ -364,6 +379,52 @@ class Console:
             return False
         log.info("reconnected")
         return True
+
+    async def _on_pending(self, _request: web.Request) -> web.Response:
+        """Whether the *ghost* is holding a question, and what it is.
+
+        The distinction matters upstream. The translator also asks questions,
+        and a "yes" that answers one of those is not a confirmation of anything
+        the ghost is holding -- it arrives here as `Action.CONFIRM` and is
+        rejected with "Nothing to confirm", which reads to the table like the
+        game ignored them.
+        """
+        held = self._pending
+        return web.json_response({
+            "awaiting": held is not None,
+            "question": held.question if held else None,
+        })
+
+    async def _on_marks(self, _request: web.Request) -> web.Response:
+        """What transient decoration is on the board and how long it has left.
+
+        Diagnostic. Temporary shapes are never written to the database and are
+        not replayed to a client that connects later, so this registry is the
+        only way to check them without looking at the board.
+        """
+        from . import ephemera
+
+        return web.json_response({
+            "marks": [
+                {"kind": m.kind, "label": m.label, "turnsLeft": m.turns_left, "shapes": len(m.uuids)}
+                for m in ephemera.tracked()
+            ]
+        })
+
+    async def _on_actions(self, request: web.Request) -> web.Response:
+        """What one character can do, for the in-game action panel."""
+        from . import actionbook
+
+        name = request.query.get("character", "")
+        if not name:
+            return web.json_response(
+                {"characters": sorted(self.client.state.characters)}
+            )
+        try:
+            return web.json_response(await actionbook.for_character(self.client, name))
+        except Exception as exc:  # noqa: BLE001
+            log.exception("could not build the action list")
+            return web.json_response({"error": str(exc)}, status=503)
 
     async def _on_state(self, request: web.Request) -> web.Response:
         """The board as facts, for whatever is writing the commands.
@@ -391,7 +452,9 @@ class Console:
         from . import scene
 
         try:
-            await scene.clear_shapes(self.client, held.marker_uuids, temporary=False)
+            # Drawn temporary, so it has to be removed temporary; otherwise the
+            # call is a no-op and the highlight stays on the board.
+            await scene.clear_shapes(self.client, held.marker_uuids, temporary=True)
         except Exception:  # noqa: BLE001 - a stuck marker is not worth losing the answer
             log.exception("could not clear the suggestion marker")
 
@@ -585,6 +648,9 @@ class Console:
         app.router.add_get("/log", lambda _r: web.json_response({"entries": self.log}))
         app.router.add_get("/characters", lambda _r: web.json_response({"characters": list(self.client.state.characters)}))
         app.router.add_get("/state", self._on_state)
+        app.router.add_get("/actions", self._on_actions)
+        app.router.add_get("/marks", self._on_marks)
+        app.router.add_get("/pending", self._on_pending)
 
         self._runner = web.AppRunner(app)
         await self._runner.setup()

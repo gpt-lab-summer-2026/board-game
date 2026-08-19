@@ -38,6 +38,7 @@ class Action(str, Enum):
     MOVE_DIR = "move_dir"
     JUMP = "jump"
     USE_ITEM = "use_item"
+    DASH = "dash"
     CONFIRM = "confirm"
     CANCEL = "cancel"
     HELP = "help"
@@ -100,23 +101,34 @@ class ClarificationNeeded(ParseError):
         self.question = question
 
 
+# Words that name *which* attack, as opposed to the fact that one is happening.
+# Deliberately generous: this is spoken at a table, and a parser that only
+# accepts the wording in the help text pushes every other phrasing out to the
+# cluster for a two-second round trip -- or worse, refuses it.
 _KIND_WORDS = {
-    "melee": AttackKind.MELEE,
-    "close": AttackKind.MELEE,
-    "sword": AttackKind.MELEE,
-    "claw": AttackKind.MELEE,
-    "claws": AttackKind.MELEE,
-    "bite": AttackKind.MELEE,
-    "ranged": AttackKind.RANGED,
-    "range": AttackKind.RANGED,
-    "bow": AttackKind.RANGED,
-    "shoot": AttackKind.RANGED,
-    "shoots": AttackKind.RANGED,
-    "fire": AttackKind.RANGED,
-    "cantrip": AttackKind.CANTRIP,
-    "spell": AttackKind.CANTRIP,
-    "cast": AttackKind.CANTRIP,
-    "casts": AttackKind.CANTRIP,
+    # melee
+    "melee": AttackKind.MELEE, "close": AttackKind.MELEE, "adjacent": AttackKind.MELEE,
+    "sword": AttackKind.MELEE, "blade": AttackKind.MELEE, "axe": AttackKind.MELEE,
+    "staff": AttackKind.MELEE, "quarterstaff": AttackKind.MELEE, "mace": AttackKind.MELEE,
+    "spear": AttackKind.MELEE, "rapier": AttackKind.MELEE, "dagger": AttackKind.MELEE,
+    "claw": AttackKind.MELEE, "claws": AttackKind.MELEE, "bite": AttackKind.MELEE,
+    "hooves": AttackKind.MELEE, "punch": AttackKind.MELEE, "unarmed": AttackKind.MELEE,
+    "stab": AttackKind.MELEE, "stabs": AttackKind.MELEE,
+    "slash": AttackKind.MELEE, "slashes": AttackKind.MELEE,
+    "swing": AttackKind.MELEE, "swings": AttackKind.MELEE,
+    "smack": AttackKind.MELEE, "smacks": AttackKind.MELEE,
+    "clobber": AttackKind.MELEE, "clobbers": AttackKind.MELEE,
+    # ranged
+    "ranged": AttackKind.RANGED, "range": AttackKind.RANGED, "distance": AttackKind.RANGED,
+    "bow": AttackKind.RANGED, "shortbow": AttackKind.RANGED, "longbow": AttackKind.RANGED,
+    "crossbow": AttackKind.RANGED, "sling": AttackKind.RANGED, "javelin": AttackKind.RANGED,
+    "arrow": AttackKind.RANGED, "bolt": AttackKind.RANGED, "shoot": AttackKind.RANGED,
+    "shoots": AttackKind.RANGED, "fire": AttackKind.RANGED, "loose": AttackKind.RANGED,
+    # cantrip / spell attack
+    "cantrip": AttackKind.CANTRIP, "spell": AttackKind.CANTRIP, "cast": AttackKind.CANTRIP,
+    "casts": AttackKind.CANTRIP, "magic": AttackKind.CANTRIP, "magical": AttackKind.CANTRIP,
+    "arcane": AttackKind.CANTRIP, "zap": AttackKind.CANTRIP, "zaps": AttackKind.CANTRIP,
+    "blast": AttackKind.CANTRIP, "blasts": AttackKind.CANTRIP, "bolt_spell": AttackKind.CANTRIP,
 }
 
 _BIAS_WORDS = {
@@ -140,7 +152,11 @@ def _bias_of(text: str) -> str:
     return "normal"
 
 
-_ATTACK_VERBS = ("attack", "attacks", "strike", "strikes", "hit", "hits", "shoot", "shoots", "cast", "casts")
+_ATTACK_VERBS = (
+    "attack", "attacks", "strike", "strikes", "hit", "hits", "shoot", "shoots",
+    "cast", "casts", "stab", "stabs", "slash", "slashes", "swing", "swings",
+    "zap", "zaps", "blast", "blasts", "smack", "smacks", "clobber", "clobbers",
+)
 _MOVE_VERBS = ("move", "moves", "walk", "walks", "go", "goes", "approach", "approaches")
 _MEASURE_VERBS = ("measure", "distance", "range", "far", "ruler")
 
@@ -221,7 +237,7 @@ _CHECK_RE = re.compile(
 
 # "elf grapples gobbo", "atton shoves the goblin", "cat disarms emo"
 _CONTEST_RE = re.compile(
-    r"^\s*(?P<a>.+?)\s+(?:tries\s+to\s+)?(?P<verb>grapples?|shoves?|disarms?)\s+(?P<b>.+?)\s*$",
+    r"^\s*(?P<a>.+?)\s+(?:tries\s+to\s+)?(?P<verb>grapples?|shoves?|disarms?|topples?|trips?)\s+(?P<b>.+?)\s*$",
     re.I,
 )
 
@@ -232,6 +248,9 @@ _CAST_RE = re.compile(
     r"(?:\s+(?:on|at|against|targeting)\s+(?P<target>.+?))?\s*$",
     re.I,
 )
+
+# "elf dashes", "cat takes the dash action", "elf dash"
+_DASH_RE = re.compile(r"^\s*(?P<a>.+?)\s+(?:takes\s+the\s+)?dash(?:es|\s+action)?\s*$", re.I)
 
 # "elf jumps towards hamster", "cat leaps at emo", "elf jumps north"
 _JUMP_RE = re.compile(
@@ -434,6 +453,13 @@ def parse(text: str) -> Intent:
             raw=raw,
         )
 
+    dashed = _DASH_RE.match(trimmed)
+    if dashed:
+        who = _clean(dashed["a"].split())
+        if not who:
+            raise ParseError("Who is dashing?")
+        return Intent(Action.DASH, actor=who, raw=raw)
+
     jumped = _JUMP_RE.match(trimmed)
     if jumped:
         actor = _clean(jumped["a"].split())
@@ -555,6 +581,11 @@ def parse(text: str) -> Intent:
         (i for i, w in enumerate(words) if w in _ATTACK_VERBS or w in _MOVE_VERBS or w in _MEASURE_VERBS),
         None,
     )
+    # "elf cantrip on emo" names a kind and no verb -- and it is a shape the
+    # help text advertises, so refusing it was a straight contradiction. Naming
+    # which attack you want is stating that you are attacking.
+    if verb_index is None and kind is not None:
+        verb_index = next(i for i, w in enumerate(words) if w in _KIND_WORDS)
     if verb_index is None:
         raise ParseError(
             f"I couldn't find an action in {raw!r}. Try 'elf ranged attack on goblin'."
@@ -618,6 +649,7 @@ HELP_TEXT = """Commands:
   <actor> casts <spell> [on <target>]  spend a slot and resolve it
   <actor> <ability> save [dc N]        one saving throw
   <actor> <skill> check [dc N]         one ability or skill check
-  <actor> grapples/shoves/disarms <target>   a contested check
+  <actor> grapples/shoves/topples <target>   a contested check
+  <actor> dashes                       double movement for the turn
 Add "with advantage" or "with disadvantage" to any attack.
 When the only route crosses a hazard the ghost asks first: answer yes or no."""

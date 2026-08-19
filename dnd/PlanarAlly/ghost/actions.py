@@ -12,6 +12,7 @@ from dataclasses import dataclass, field as dc_field
 from typing import Any
 
 from . import deathsaves
+from . import ephemera
 from . import sheet
 from . import turns
 from . import battlefield
@@ -116,6 +117,9 @@ async def execute(
     if intent.action is Action.CHECK:
         return await _do_check(client, actor_uuid, intent, as_player)
 
+    if intent.action is Action.DASH:
+        return await _do_dash(client, actor_uuid, intent)
+
     if intent.action is Action.MOVE_DIR:
         return await _do_move_direction(client, actor_uuid, intent)
 
@@ -202,6 +206,93 @@ async def _build_field(client: GhostClient) -> battlefield.Battlefield:
         unit_size=client.state.unit_size,
         hazard_uuids=client.state.hazard_uuids,
     )
+
+
+# How long a spell's mark stays on the board, in turns. Instantaneous spells get
+# one turn so the table can see where the Fire Bolt went before it is gone;
+# anything with concentration or a stated duration lingers.
+def effect_turns(spell: dict) -> int:
+    if spell.get("concentration"):
+        return 10
+    duration = str(spell.get("duration") or "").lower()
+    if "minute" in duration:
+        return 10
+    if "hour" in duration:
+        return 60
+    if duration:
+        return 2
+    return 1
+
+
+# Colour by damage type, so a glance at the board says what happened. Falls back
+# to a neutral wash rather than picking something arbitrary and wrong.
+EFFECT_COLOURS = {
+    "fire": "#ff7a3355", "cold": "#7ad7ff55", "lightning": "#ffe14d55",
+    "thunder": "#c9a6ff55", "radiant": "#fff2b055", "force": "#b0c4ff55",
+    "acid": "#9cff7a55", "poison": "#8fd18f55", "necrotic": "#6b5b7b55",
+}
+
+
+async def _draw_spell_effect(client, spell: dict, centre_uuid: str | None) -> None:
+    """Put the spell on the board for as long as it lasts.
+
+    Only ever decoration -- the geometry that decides who is hit is computed
+    separately and is not read back off these shapes. Drawing were it to fail
+    must not cost anybody a spell slot, hence the broad catch.
+    """
+    if centre_uuid is None:
+        return
+    from . import scene
+
+    try:
+        field = await _build_field(client)
+        centre = field.occupants.get(centre_uuid)
+        if centre is None:
+            return
+
+        area = spell.get("area") or {}
+        size_ft = int(area.get("size") or 0)
+        radius = max(0, int(size_ft // field.unit_size)) if size_ft else 0
+        # The whole footprint, not just the cells that happen to be occupied:
+        # the point of drawing it is to show the ground it covers.
+        # Capped for the same reason the ruler's highlight is: each cell is a
+        # separate synced shape on the draw layer, and a big radius on a hex
+        # grid grows quadratically -- a 30 ft burst at 7 ft per cell is 61 of
+        # them.
+        cells = (_cells_within(field, centre.cell, radius) if radius else [centre.cell])[:24]
+
+        colour = EFFECT_COLOURS.get(str(spell.get("damageType") or ""), "#b0b0b055")
+        drawn = await scene.add_block(
+            client, field, cells, ephemera.EFFECT_NAME,
+            floor=client.state.current_floor,
+            blocks_vision=False, blocks_movement=False,
+            fill=colour, layer="draw",
+        )
+        ephemera.add(
+            drawn,
+            turns=effect_turns(spell),
+            label=f"{spell.get('name')} fades",
+            kind=ephemera.EFFECT_NAME,
+        )
+    except Exception:  # noqa: BLE001 - a missing picture must not cost a slot
+        log.exception("could not draw the spell effect")
+
+
+def _cells_within(field, centre, radius: int) -> list:
+    """Every cell within `radius` of `centre`, footprint and all."""
+    from .grid import neighbours
+
+    seen = {centre}
+    frontier = [centre]
+    for _ in range(radius):
+        nxt = []
+        for cell in frontier:
+            for n in neighbours(cell, field.grid):
+                if n not in seen:
+                    seen.add(n)
+                    nxt.append(n)
+        frontier = nxt
+    return list(seen)
 
 
 async def _friendly_fire_warning(client, caster_uuid, target_uuid, spell) -> str | None:
@@ -308,7 +399,7 @@ async def _mark(client, field, spot) -> list[str]:
         return []
     try:
         return await scene.add_block(
-            client, field, [spot.cell], "suggested spot",
+            client, field, [spot.cell], ephemera.SUGGESTION_NAME,
             floor=floor, blocks_vision=False, blocks_movement=False,
             fill="#82c8a077", layer="draw",
         )
@@ -352,10 +443,16 @@ async def _do_use_item(client, actor_uuid, target_uuid, intent: Intent, as_playe
         drinker = target_uuid or actor_uuid
         drinker_name = _display_name(client, drinker, intent.target) if target_uuid else name
         roll = await client.roll_dice(carried["healing"], share_with="all", as_player=as_player or name)
-        after = await sheet.damage(client, drinker, -roll.total)
+        before = ((await sheet.read_sheet(client, drinker)) or {}).get("hp", {}).get("current", 0)
+        after = await sheet.heal(client, drinker, roll.total)
         for line in await deathsaves.on_healed(client, drinker, drinker_name):
             out.say(line)
-        return out.say(f"{drinker_name} regains {roll.total}, now on {after['current']}.")
+        # The roll and the healing are different numbers once the cap bites.
+        # Reporting the roll read as an off-by-one every time somebody topped up.
+        restored = after["current"] - max(0, before)
+        wasted = roll.total - restored
+        tail = f" ({roll.total} rolled, {wasted} wasted)" if wasted > 0 else ""
+        return out.say(f"{drinker_name} regains {restored}, now on {after['current']}{tail}.")
 
     if target_uuid is None:
         return out.say(f"{label} needs somewhere to go -- name a target.")
@@ -399,7 +496,10 @@ async def _do_use_item(client, actor_uuid, target_uuid, intent: Intent, as_playe
         if amount > 0:
             await _land(client, victim, victim_name, amount, out)
         if carried.get("applies") and not (carried.get("save") and amount == 0):
-            await _apply_on_hit(client, victim, victim_name, carried["applies"], out)
+            applies = dict(carried["applies"])
+            applies.setdefault("dc", int(carried.get("saveDc") or 13))
+            applies["name"] = await sheet.condition_label(client, applies.get("condition", ""))
+            await _apply_on_hit(client, victim, victim_name, applies, out)
 
     return out
 
@@ -470,6 +570,26 @@ async def _do_jump(client, actor_uuid: str, target_uuid: str | None, intent: Int
         gap = int(grid_distance(landing, field.occupants[target_uuid].cell, field.grid) * field.unit_size)
         out.say(f"That lands {gap} feet from {_display_name(client, target_uuid, intent.target)}.")
     return out
+
+
+async def _do_dash(client, actor_uuid: str, intent: Intent) -> Outcome:
+    """Trade the action for a second helping of movement.
+
+    Implemented by crediting the turn budget rather than by moving anything: a
+    Dash does not decide where you go, it decides how far you may. The credit is
+    a negative spend, which is what keeps "moved 15 of 30" reading correctly
+    after it.
+    """
+    name = _display_name(client, actor_uuid, intent.actor)
+    data = await sheet.read_sheet(client, actor_uuid)
+    speed = int((data or {}).get("speed") or 30)
+
+    spent = await turns.spend(client, actor_uuid, "action")
+    if not spent:
+        return Outcome(False, [f"{name} has already used its action this turn."])
+
+    await turns.spend_movement(client, actor_uuid, -speed, speed)
+    return Outcome(True, [f"{name} dashes: another {speed} feet of movement this turn."])
 
 
 async def _do_move_direction(client, actor_uuid: str, intent: Intent) -> Outcome:
@@ -613,6 +733,10 @@ async def _apply_on_hit(client, target_uuid, target_name, applied, out) -> None:
     A failed save is narrated as a failed save rather than silently applied:
     the table needs to hear the number to trust the outcome.
     """
+    # Weapons and cantrips arrive here pre-resolved by the mod's deriveApplies,
+    # which adds a display name and a DC. Catalogue items carry the raw
+    # `{condition}` block instead, so neither is guaranteed.
+    label = str(applied.get("name") or applied.get("condition") or "it")
     save_ability, dc = applied.get("save"), applied.get("dc")
     if save_ability and dc:
         target_sheet = await sheet.read_sheet(client, target_uuid)
@@ -623,7 +747,7 @@ async def _apply_on_hit(client, target_uuid, target_name, applied, out) -> None:
         )
         if roll.total >= dc:
             out.say(
-                f"{target_name} saves against {applied['name'].lower()}: "
+                f"{target_name} saves against {label.lower()}: "
                 f"{roll.total} versus DC {dc}."
             )
             return
@@ -633,9 +757,9 @@ async def _apply_on_hit(client, target_uuid, target_name, applied, out) -> None:
         await sheet.set_condition(client, target_uuid, applied["condition"], True)
     except (KeyError, sheet.CatalogueNotReady):
         # Worth saying, not worth aborting a resolved attack over.
-        out.say(f"(couldn't record {applied['name'].lower()} on the sheet)")
+        out.say(f"(couldn't record {label.lower()} on the sheet)")
         return
-    out.say(f"{target_name} is now {applied['name'].lower()}.")
+    out.say(f"{target_name} is now {label.lower()}.")
 
 
 async def _do_condition(client, target_uuid: str, intent: Intent) -> Outcome:
@@ -712,6 +836,9 @@ async def _do_check(client, actor_uuid: str, intent: Intent, as_player: str | No
 CONTESTS = {
     "grapple": ("athletics", ("athletics", "acrobatics"), "grappled"),
     "shove": ("athletics", ("athletics", "acrobatics"), "prone"),
+    # Same contest, the word people actually use for it.
+    "topple": ("athletics", ("athletics", "acrobatics"), "prone"),
+    "trip": ("athletics", ("athletics", "acrobatics"), "prone"),
     "disarm": ("athletics", ("athletics", "acrobatics"), None),
 }
 
@@ -797,6 +924,7 @@ async def _do_cast(
 
     name = spell.get("name") or intent.spell
     out = Outcome(True, [f"{actor_name} casts {name} ({left} slot(s) left)."])
+    await _draw_spell_effect(client, spell, target_uuid or actor_uuid)
     target_name = _display_name(client, target_uuid, intent.target) if target_uuid else None
 
     kind = spell.get("kind")
@@ -816,10 +944,14 @@ async def _do_cast(
         if target_uuid is None:
             return out.say(f"{name} needs a target.")
         roll = await client.roll_dice(spell["healing"], share_with="all", as_player=as_player or actor_name)
-        healed = await sheet.damage(client, target_uuid, -roll.total)
+        before = ((await sheet.read_sheet(client, target_uuid)) or {}).get("hp", {}).get("current", 0)
+        healed = await sheet.heal(client, target_uuid, roll.total)
         for line in await deathsaves.on_healed(client, target_uuid, target_name or "the target"):
             out.say(line)
-        return out.say(f"{target_name} regains {roll.total} hit points, now on {healed['current']}.")
+        restored = healed["current"] - max(0, before)
+        wasted = roll.total - restored
+        tail = f" ({roll.total} rolled, {wasted} wasted)" if wasted > 0 else ""
+        return out.say(f"{target_name} regains {restored} hit points, now on {healed['current']}{tail}.")
 
     if target_uuid is None:
         return out.say(f"{name} needs a target.")
@@ -1048,7 +1180,12 @@ async def _do_measure(client, actor_uuid, target_uuid, actor_name, target_name) 
     out.say(f"{actor_name} to {target_name}: {feet} feet ({cells} cells), {sight}.")
 
     try:
-        await scene.draw_ruler(client, field, a.cell, b.cell, f"{feet} ft")
+        # One measurement on the board at a time, and gone by the next turn.
+        # These used to be drawn and never removed, so a session accumulated
+        # every line anyone had ever measured.
+        await ephemera.clear_kind(client, ephemera.RULER_NAME)
+        drawn = await scene.draw_ruler(client, field, a.cell, b.cell, f"{feet} ft")
+        ephemera.add(drawn, turns=1, label="", kind=ephemera.RULER_NAME)
     except Exception as e:  # noqa: BLE001 - the number is the point; the line is a bonus
         log.info("could not draw the ruler: %s", e)
     return out

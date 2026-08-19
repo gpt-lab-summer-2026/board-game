@@ -298,7 +298,8 @@ async def draw_ruler(
     label: str,
     *,
     floor: str | None = None,
-    grid_mode: bool = True,
+    grid_mode: bool = False,
+    max_cells: int = 20,
 ) -> list[str]:
     """Draw a measurement everyone can see, counting cells like the ruler's grid mode.
 
@@ -323,8 +324,12 @@ async def draw_ruler(
     half = DEFAULT_GRID_SIZE / 2
 
     if grid_mode:
-        # Start cell tinted differently, the way PA distinguishes it locally.
-        for index, cell in enumerate([a, *field.cells_between(a, b), b]):
+        # One synced shape per cell, and they land on the *draw* layer -- the
+        # same layer the draw tool paints on, which then has to re-render all of
+        # them on every stroke. A twelve-cell measurement is eighteen shapes; a
+        # session's worth brought the draw tool to a crawl on the Pi. Off by
+        # default now, and capped when it is on.
+        for index, cell in enumerate([a, *field.cells_between(a, b), b][:max_cells]):
             cx, cy = cell_center(cell, field.grid)
             tile = _core(
                 x=cx - half,
