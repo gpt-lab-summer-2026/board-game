@@ -5,8 +5,21 @@ DEFAULT_DICT ="DICT_APRILTAG_36H10"
 
 # Built once, not per frame: the dictionary and detector are static config,
 # not something that depends on the image.
-_DICTIONARY = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36H10)
-_DETECTOR = cv2.aruco.ArucoDetector(_DICTIONARY, cv2.aruco.DetectorParameters())
+_DICTIONARY = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+
+_PARAMS = cv2.aruco.DetectorParameters()
+# The default window sweep (3..23 step 10) assumes fairly even lighting. Under
+# a projector, brightness varies a lot within one tag's footprint (a shadow
+# or a bright patch of projected map), so a wider max window and finer step
+# give the adaptive threshold more chance to separate the tag from whatever
+# is being projected onto it.
+_PARAMS.adaptiveThreshWinSizeMax = 53
+_PARAMS.adaptiveThreshWinSizeStep = 6
+# Sub-pixel corners are more stable when the tag's edges are partly degraded
+# by projected content rather than clean black/white.
+_PARAMS.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+
+_DETECTOR = cv2.aruco.ArucoDetector(_DICTIONARY, _PARAMS)
 
 def generate_tags():
     # create the dictionary for markers type
@@ -20,7 +33,7 @@ def generate_tags():
 
         print("Dimension of Marker: ", img.shape, " id: ", marker_id)
         # save/write the image
-        cv2.imwrite("/aruco_tags/marker_image{}.png".format(marker_id), img)
+        cv2.imwrite("marker_image{}.png".format(marker_id), img)
 
     # display the image(marker) on windows
     cv2.imshow("Marker", img)
