@@ -35,10 +35,7 @@ export type VoiceTranscript = {
 export type VoiceStatusKind =
   | 'waiting_for_wake_word'
   | 'recording'
-  | 'transcribing'
-  /** A follow-up window after a command -- play_game.py is listening again
-   * without requiring the wake word, up to a small cap (see MAX_FOLLOWUPS). */
-  | 'listening_for_followup';
+  | 'transcribing';
 
 export type VoiceStatus = {
   status: VoiceStatusKind;

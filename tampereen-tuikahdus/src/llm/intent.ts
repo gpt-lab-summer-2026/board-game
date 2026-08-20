@@ -104,6 +104,17 @@ export async function resolveMoveIntent(args: {
 
   const parsed = raw as Partial<RawIntent> | null;
   const action = parsed?.action;
+
+  // An exact name/id occurrence in what the player said outranks the model's
+  // pick -- see matchCityName. Computed before the unclear check below so it can
+  // rescue the "no_heading" case: the model itself agreed this was move-shaped
+  // text but missed the place name, which small models do more than you'd like
+  // on combined utterances like "roll the dice and move towards X". It does NOT
+  // rescue "not_a_move" or "ambiguous" -- a city merely being mentioned ("is it
+  // my turn, I'm at Tammela?") isn't reason enough to move a piece when the
+  // model was confident this wasn't a move attempt at all.
+  const exact = matchCityName(transcript);
+
   if (!action || !INTENT_ACTIONS.includes(action)) {
     return {
       kind: 'unclear',
@@ -113,17 +124,14 @@ export async function resolveMoveIntent(args: {
 
   if (action === 'unclear') {
     const reason = parsed?.unclear_reason ?? '';
-    return {
-      kind: 'unclear',
-      message: UNCLEAR_TEXT[reason] ?? UNCLEAR_TEXT.not_a_move,
-    };
+    if (!(reason === 'no_heading' && exact)) {
+      return {
+        kind: 'unclear',
+        message: UNCLEAR_TEXT[reason] ?? UNCLEAR_TEXT.not_a_move,
+      };
+    }
   }
 
-  // An exact name/id occurrence in what the player said outranks the model's
-  // pick -- see matchCityName. Only applied to an already-decided move: if the
-  // model said "unclear", a city merely being mentioned ("is it my turn, I'm at
-  // Tammela?") is not reason enough to move a piece.
-  const exact = matchCityName(transcript);
   const heading = exact ?? parsed?.heading;
   if (
     typeof heading !== 'string' ||

@@ -283,6 +283,17 @@ function App() {
       return;
     }
 
+    // Captured players can't act on a card here -- status gates the pendingCard
+    // panel out of the sidebar entirely, and they don't get to try again until
+    // they escape (see attemptEscape). Ending the turn immediately, card or not,
+    // keeps this consistent instead of silently skipping advanceTurn only when a
+    // card happens to be present, which used to leave the card attached to
+    // whichever OTHER player's turn came up next.
+    if (status) {
+      advanceTurn();
+      return;
+    }
+
     const card = cards[destinationId];
     if (card) {
       setPendingCard({ cityId: destinationId });
@@ -523,6 +534,13 @@ function App() {
     setPlayers(
       players.map(p => (p.id === updated.id ? updated : p)),
     );
+    // Freed and a card is still sitting unclaimed right where they were captured
+    // (nobody else got to it) -- give them the same buy/wait/skip choice a normal
+    // arrival would, instead of ending their turn without ever letting them act on it.
+    if (escaped && cards[updated.placeId]) {
+      setPendingCard({ cityId: updated.placeId });
+      return;
+    }
     advanceTurn();
   };
 
@@ -532,6 +550,20 @@ function App() {
     const cityId = currentPlayer.status.cityId;
     if (roll >= 4) {
       const kind = cards[cityId];
+      if (!kind) {
+        // Someone else standing at the same city claimed it first while this
+        // player was waiting -- free them with an honest message instead of
+        // silently clearing their status with no reward and no explanation.
+        setPlayers(
+          players.map(p =>
+            p.id === currentPlayer.id ? { ...p, status: null } : p,
+          ),
+        );
+        setInfoMessage('Someone else already claimed that card.');
+        setRevealedCard(null);
+        advanceTurn();
+        return;
+      }
       const result = applyCardEffect(
         { ...currentPlayer, status: null },
         kind,
@@ -631,7 +663,7 @@ function App() {
       </div>
       <div className='game-info'>
         <h2 className='game-info-title'>Gaming stats</h2>
-        <VoiceIndicator voice={voice} />
+        <VoiceIndicator voice={voice} thinking={llmPending} />
         {players.length > 0 && (
           <ul className='player-roster'>
             {players.map((player, index) => (
