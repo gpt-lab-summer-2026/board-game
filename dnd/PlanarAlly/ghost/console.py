@@ -22,6 +22,7 @@ from typing import Awaitable, Callable
 
 from aiohttp import web
 
+from . import nlguard
 from .actions import Outcome, Pending, execute
 from .client import GhostClient
 from .sheet import read_sheet as sheet_read
@@ -272,6 +273,19 @@ class Console:
         # Let the client push its own observations into this log.
         client.on_narration = self._note
 
+    def _active_name(self) -> str | None:
+        """Whose turn it is, or None when nobody is in initiative.
+
+        The initiative cache rather than the `pa-turnbudget` block: the cache is
+        fed by the server's own `Initiative.Set` broadcast, so it is correct with
+        no browser open and costs no round trip, and out of combat it is empty --
+        which `wrong_turn` reads as "anyone may do anything".
+        """
+        from . import initiative  # noqa: PLC0415 - circular at import time
+
+        current = self.client.state.initiative.current
+        return initiative._name(self.client, current) if current else None
+
     async def handle(self, text: str, source: str = "text") -> Outcome:
         """Parse and run one command. The voice pipeline calls this too.
 
@@ -302,6 +316,19 @@ class Console:
             translated = await self._translate(original, source)
             if translated is not None:
                 return translated
+
+        # Turn ownership, checked here rather than on the translated path
+        # alone. It used to live in `_translate`, which meant it only ever fired
+        # on prose: "back the elf off" was refused because it is gentelman's
+        # turn, while the exact command "elf moves away from hamster" parsed
+        # locally and sailed straight past. Same request, opposite answers,
+        # depending on nothing the player could see -- which is how it came to
+        # look like the elf was stuck.
+        clash = nlguard.wrong_turn(
+            intent.action.value, intent.actor, self._active_name(),
+        )
+        if clash:
+            return self._record(text, source, intent, Outcome(False, [clash]))
 
         # A yes/no only means something while a question is open, and it
         # answers *that* question -- it is never a command in its own right.
@@ -524,9 +551,9 @@ class Console:
         elf's turn, an attack by the hamster is wrong however confidently it was
         produced.
         """
-        # Local imports: worldstate reaches into actions, which imports this
+        # Local imports: translate reaches into actions, which imports this
         # module, so a top-level import would close the loop.
-        from . import nlguard, translate as nl, worldstate
+        from . import translate as nl
 
         if nl.cluster_url() is None:
             return None
@@ -556,11 +583,6 @@ class Console:
             intent = parse(payload)
         except ParseError as e:
             return self._record(said, source, None, Outcome(False, [f"{payload!r}: {e}"]))
-
-        active = (await worldstate.snapshot(self.client)).get("turn_of")
-        clash = nlguard.wrong_turn(intent.action.value, intent.actor, active)
-        if clash:
-            return self._record(said, source, intent, Outcome(False, [clash]))
 
         log.info("translated %r -> %r", said, payload)
         outcome = await self.handle(payload, f"{source}+nl")

@@ -37,6 +37,9 @@ UNIVERSAL = [
     ("Topple", "action", "{a} topples {t}", True),
     ("Disarm", "action", "{a} disarms {t}", True),
     ("Measure", "info", "measure from {a} to {t}", True),
+    # Actorless -- the template ignores {a} -- but it belongs on the panel next
+    # to the actions it ends, not in a group of its own.
+    ("End turn", "info", "next turn", False),
 ]
 
 # The eight headings, offered as one group rather than eight buttons.

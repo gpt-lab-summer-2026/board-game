@@ -39,6 +39,9 @@ class Action(str, Enum):
     JUMP = "jump"
     USE_ITEM = "use_item"
     DASH = "dash"
+    NEXT_TURN = "next_turn"
+    PREV_TURN = "prev_turn"
+    WHOSE_TURN = "whose_turn"
     CONFIRM = "confirm"
     CANCEL = "cancel"
     HELP = "help"
@@ -327,6 +330,19 @@ def _clean(words: Iterable[str]) -> str:
 # The two channels the upstream translator answers on. Tolerated here so that a
 # tagged line can be handed straight to `parse` without the caller having to
 # know about the contract.
+# Spoken several ways at a real table, and all of them mean the same thing.
+# "end turn" is included deliberately: it is what people actually say, even
+# though what it does is start the next one.
+_NEXT_TURN = {
+    "next turn", "end turn", "end of turn", "turn over", "done", "i'm done",
+    "im done", "pass turn", "pass the turn", "next", "end my turn",
+}
+_PREV_TURN = {"previous turn", "prev turn", "last turn", "back a turn", "go back a turn"}
+_WHOSE_TURN = {
+    "whose turn", "whose turn is it", "who's turn", "whos turn", "who is up",
+    "who's up", "turn order", "initiative order",
+}
+
 _CMD_TAG = re.compile(r"^\s*CMD\s*:\s*", re.I)
 _ASK_TAG = re.compile(r"^\s*ASK\s*:\s*", re.I)
 
@@ -342,6 +358,15 @@ def parse(text: str) -> Intent:
 
     if lowered in {"help", "?", "commands"}:
         return Intent(Action.HELP, raw=raw)
+    # Turn control is actorless, so it is matched here as whole phrases rather
+    # than by a regex further down -- everything below this point expects to
+    # pull a character name out of the string first.
+    if lowered in _NEXT_TURN:
+        return Intent(Action.NEXT_TURN, raw=raw)
+    if lowered in _PREV_TURN:
+        return Intent(Action.PREV_TURN, raw=raw)
+    if lowered in _WHOSE_TURN:
+        return Intent(Action.WHOSE_TURN, raw=raw)
     if lowered in _YES:
         return Intent(Action.CONFIRM, raw=raw)
     if lowered in _NO:
@@ -651,5 +676,8 @@ HELP_TEXT = """Commands:
   <actor> <skill> check [dc N]         one ability or skill check
   <actor> grapples/shoves/topples <target>   a contested check
   <actor> dashes                       double movement for the turn
+  next turn                            end the current turn and start the next
+  previous turn                        step the tracker back one
+  whose turn                           read the order back without changing it
 Add "with advantage" or "with disadvantage" to any attack.
 When the only route crosses a hazard the ghost asks first: answer yes or no."""

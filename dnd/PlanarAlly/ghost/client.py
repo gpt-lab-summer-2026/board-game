@@ -45,6 +45,41 @@ class GhostConfig:
 
 
 @dataclass
+class InitiativeState:
+    """The initiative order, as the server last broadcast it.
+
+    The ghost used to have no copy of this at all. `turns.active_shape` read the
+    `pa-turnbudget` block instead, which is written *only* by an open DM browser
+    -- so with the projector tab closed it went stale, and it never held the
+    order or its length, which is exactly what advancing a turn needs.
+
+    `Location.Load` already sends `Initiative.Set`, so nothing extra has to be
+    asked for; the ghost simply used to throw it away in the catch-all.
+    """
+
+    round: int = 0
+    turn: int = 0
+    sort: int = 0
+    is_active: bool = False
+    """Shape uuids, in turn order."""
+    order: list[str] = field(default_factory=list)
+
+    @property
+    def current(self) -> str | None:
+        """The shape whose turn it is, or None if the order is empty."""
+        if 0 <= self.turn < len(self.order):
+            return self.order[self.turn]
+        return None
+
+    def clear(self) -> None:
+        self.round = 0
+        self.turn = 0
+        self.sort = 0
+        self.is_active = False
+        self.order.clear()
+
+
+@dataclass
 class BoardState:
     """What the ghost currently believes is on the board."""
 
@@ -71,6 +106,8 @@ class BoardState:
     """Name of the floor the ghost is looking at. Shape.Add addresses floors
     and layers by name, not id, and silently drops an unknown pair."""
     current_floor: str | None = None
+    """Round, turn and order, mirrored from the server's initiative broadcasts."""
+    initiative: InitiativeState = field(default_factory=InitiativeState)
 
     def find_shape(self, name: str) -> str | None:
         """Resolve a spoken name to a shape uuid.
@@ -225,6 +262,48 @@ class GhostClient:
         self.state.characters.clear()
         self.state.character_ids.clear()
         self.state.current_floor = None
+        # Or a location with no initiative of its own inherits the previous
+        # one's order and reports somebody else's turn.
+        self.state.initiative.clear()
+
+    async def on_turn_advanced(self) -> None:
+        """Count sheet-held durations down because a turn has gone by.
+
+        The browser ticks PlanarAlly's own initiative effects; anything the
+        character sheet mod owns -- a +2 that lasts two rounds -- is invisible to
+        it, so the ghost does that half.
+
+        Called from two places, and it has to be: the socket handler when a
+        human advances the turn, and `initiative.next_turn` when the ghost does.
+        The server echoes `Initiative.Turn.Update` with `skip_sid`, so the ghost
+        never hears its own, and a version that only ticked on the broadcast
+        would expire durations exclusively when somebody clicked.
+
+        Imported inside the function rather than at module scope: `turns`
+        imports `sheet`, which imports this module.
+        """
+        from . import turns  # noqa: PLC0415 - circular at import time
+
+        if self._turn_hook_busy:
+            return
+        self._turn_hook_busy = True
+        try:
+            from . import ephemera  # noqa: PLC0415 - same cycle as turns
+
+            lines = await turns.tick_durations(client=self, shapes=list(self.state.shapes))
+            # Ruler marks, suggestion highlights and spell effects all count
+            # their lives in turns, so they expire on the same beat.
+            lines.extend(f"{label}." for label in await ephemera.tick(self))
+            for line in lines:
+                log.info("duration: %s", line)
+            if lines and self.on_narration is not None:
+                await self.on_narration(" ".join(lines))
+        except Exception:
+            # A failed tick must not take the socket handler down with it; the
+            # next turn will try again.
+            log.exception("could not tick durations")
+        finally:
+            self._turn_hook_busy = False
 
     async def close(self) -> None:
         if self.sio.connected:
@@ -400,37 +479,80 @@ class GhostClient:
                     self.state.shapes[uuid].update({"x": x, "y": y})
                     log.info("shape moved: %s -> (%s,%s)", uuid, x, y)
 
+        @self.sio.on("Initiative.Set", namespace=ns)
+        async def initiative_set(data):
+            """The whole order, replaced wholesale.
+
+            Broadcast to everyone *including* the sender, unlike most initiative
+            events, which is what makes it usable as the ghost's source of
+            truth. `Location.Load` sends one, so the order is primed on connect.
+            """
+            init = self.state.initiative
+            init.round = int(data.get("round") or 0)
+            init.turn = int(data.get("turn") or 0)
+            init.sort = int(data.get("sort") or 0)
+            init.is_active = bool(data.get("isActive"))
+            init.order = [e["shape"] for e in (data.get("data") or []) if e.get("shape")]
+            log.info("initiative: %d entries, round %d turn %d", len(init.order), init.round, init.turn)
+
+        @self.sio.on("Initiative.Round.Update", namespace=ns)
+        async def round_updated(data):
+            self.state.initiative.round = int((data or {}).get("round") or 0)
+
+        @self.sio.on("Initiative.Active.Set", namespace=ns)
+        async def initiative_active(data):
+            self.state.initiative.is_active = bool(data)
+
+        @self.sio.on("Initiative.Sort.Set", namespace=ns)
+        async def initiative_sort(data):
+            self.state.initiative.sort = int(data or 0)
+
+        @self.sio.on("Initiative.Remove", namespace=ns)
+        async def initiative_removed(data):
+            uuid = data if isinstance(data, str) else (data or {}).get("shape")
+            init = self.state.initiative
+            if uuid in init.order:
+                gone = init.order.index(uuid)
+                init.order.remove(uuid)
+                # Removing someone before the current actor shifts everyone
+                # after them down a slot; without this the ghost's idea of whose
+                # turn it is silently slides by one.
+                if gone < init.turn:
+                    init.turn -= 1
+                init.turn = max(0, min(init.turn, max(0, len(init.order) - 1)))
+
+        @self.sio.on("Initiative.Add", namespace=ns)
+        async def initiative_added(data):
+            uuid = (data or {}).get("shape")
+            if uuid and uuid not in self.state.initiative.order:
+                # Appended, not sorted: the server appends too, and the browser
+                # sends a Sort.Set afterwards if it wants an order.
+                self.state.initiative.order.append(uuid)
+
+        @self.sio.on("Initiative.Clear", namespace=ns)
+        async def initiative_cleared(data=None):
+            # Clear drops the *effects*, not the order -- but the round goes
+            # back to 1 and the turn to the top.
+            self.state.initiative.round = 1
+            self.state.initiative.turn = 0
+
+        @self.sio.on("Initiative.Wipe", namespace=ns)
+        async def initiative_wiped(data=None):
+            self.state.initiative.clear()
+
         @self.sio.on("Initiative.Turn.Update", namespace=ns)
         async def turn_advanced(data):
-            """Count sheet-held durations down when the DM moves the turn on.
+            """Someone else moved the turn on. Mirror it, then tick.
 
-            The browser ticks PlanarAlly's own initiative effects; anything the
-            character sheet mod owns -- a +2 that lasts two rounds -- is invisible
-            to it, so the ghost does that half. Imported here rather than at module
-            scope: `turns` imports `sheet`, which imports this module.
+            Note the ghost does *not* hear its own turn updates: the server
+            re-broadcasts this one with `skip_sid`. Anything that advances the
+            turn from this side has to call `on_turn_advanced` itself, which is
+            why the body below is a method rather than inline here.
             """
-            from . import turns  # noqa: PLC0415 - circular at import time
-
-            if self._turn_hook_busy:
-                return
-            self._turn_hook_busy = True
-            try:
-                from . import ephemera  # noqa: PLC0415 - same cycle as turns
-
-                lines = await turns.tick_durations(client=self, shapes=list(self.state.shapes))
-                # Ruler marks, suggestion highlights and spell effects all count
-                # their lives in turns, so they expire on the same beat.
-                lines.extend(f"{label}." for label in await ephemera.tick(self))
-                for line in lines:
-                    log.info("duration: %s", line)
-                if lines and self.on_narration is not None:
-                    await self.on_narration(" ".join(lines))
-            except Exception:
-                # A failed tick must not take the socket handler down with it;
-                # the next turn will try again.
-                log.exception("could not tick durations on turn %r", data)
-            finally:
-                self._turn_hook_busy = False
+            turn = (data or {}).get("turn")
+            if isinstance(turn, int):
+                self.state.initiative.turn = turn
+            await self.on_turn_advanced()
 
         @self.sio.on("*", namespace=ns)
         async def catch_all(event, data=None):

@@ -13,6 +13,7 @@ from typing import Any
 
 from . import deathsaves
 from . import ephemera
+from . import initiative
 from . import sheet
 from . import turns
 from . import battlefield
@@ -90,6 +91,18 @@ async def execute(
 ) -> Outcome:
     if intent.action is Action.HELP:
         return Outcome(True, HELP_TEXT.splitlines())
+
+    # Turn control names nobody, so it has to be resolved before the actor
+    # lookup below -- which would otherwise refuse it for want of a character
+    # called None.
+    if intent.action is Action.NEXT_TURN:
+        return Outcome(True, await initiative.advance(client, forward=True))
+
+    if intent.action is Action.PREV_TURN:
+        return Outcome(True, await initiative.advance(client, forward=False))
+
+    if intent.action is Action.WHOSE_TURN:
+        return Outcome(True, await initiative.whose_turn(client))
 
     actor_uuid = client.state.find_shape(intent.actor or "")
     if actor_uuid is None:
@@ -350,10 +363,9 @@ async def _offer_a_better_spot(
 
     lines = [*(prefix or []), refusal]
 
-    speed = 30.0
-    actor_sheet = await sheet.read_sheet(client, actor_uuid)
-    if actor_sheet is not None:
-        speed = float(actor_sheet.get("speed") or 30)
+    # Suggesting a firing position the character cannot actually reach this
+    # turn is worse than suggesting none, so this is metered too.
+    speed, _full = await _movement_budget(client, actor_uuid, field)
 
     sides = await _sides(client)
     spot = suggest.spot_with_sight(
@@ -572,6 +584,27 @@ async def _do_jump(client, actor_uuid: str, target_uuid: str | None, intent: Int
     return out
 
 
+async def _movement_budget(client, actor_uuid: str, field=None) -> tuple[float, float]:
+    """(feet this creature may still move, its full speed).
+
+    Every mover used to read the sheet's speed and walk that far, no matter how
+    much of the turn's movement was already gone -- so the budget counted up
+    while nothing ever consulted it, and a 30-foot creature could cross the map
+    one command at a time.
+
+    Pass `field` and the remainder is rounded down to whole cells. Two feet left
+    on a seven-foot hex grid is not "a little movement", it is none -- and
+    without this the pathfinder is handed a budget of zero steps and reports "a
+    wall is in the way", which sends you looking for a wall that is not there.
+    """
+    data = await sheet.read_sheet(client, actor_uuid)
+    speed = float((data or {}).get("speed") or 30)
+    left = await turns.remaining_movement(client, actor_uuid, speed)
+    if field is not None and field.cells_for_speed(left) < 1:
+        left = 0.0
+    return left, speed
+
+
 async def _do_dash(client, actor_uuid: str, intent: Intent) -> Outcome:
     """Trade the action for a second helping of movement.
 
@@ -588,7 +621,7 @@ async def _do_dash(client, actor_uuid: str, intent: Intent) -> Outcome:
     if not spent:
         return Outcome(False, [f"{name} has already used its action this turn."])
 
-    await turns.spend_movement(client, actor_uuid, -speed, speed)
+    await turns.grant_speed(client, actor_uuid, speed)
     return Outcome(True, [f"{name} dashes: another {speed} feet of movement this turn."])
 
 
@@ -600,12 +633,11 @@ async def _do_move_direction(client, actor_uuid: str, intent: Intent) -> Outcome
         return Outcome(False, [f"{intent.direction!r} is not a direction I know."])
 
     field = await _build_field(client)
-    speed = 30.0
-    actor_sheet = await sheet.read_sheet(client, actor_uuid)
-    if actor_sheet is not None:
-        speed = float(actor_sheet.get("speed") or 30)
+    left, speed = await _movement_budget(client, actor_uuid, field)
+    if left <= 0:
+        return Outcome(False, [f"{name} has no movement left this turn."])
 
-    plan = plan_direction(field, actor_uuid, heading, field.cells_for_speed(speed))
+    plan = plan_direction(field, actor_uuid, heading, field.cells_for_speed(left))
     if not plan.path:
         blocker = "something dangerous" if plan.blocked_by_hazard else "a wall"
         return Outcome(True, [f"{name} can't go {intent.direction} -- {blocker} is in the way."])
@@ -626,10 +658,9 @@ async def _do_retreat(
     """Back away from a threat, as far as this turn's movement allows."""
     field = await _build_field(client)
 
-    speed = 30.0
-    actor_sheet = await sheet.read_sheet(client, actor_uuid)
-    if actor_sheet is not None:
-        speed = float(actor_sheet.get("speed") or 30)
+    left, speed = await _movement_budget(client, actor_uuid, field)
+    if left <= 0:
+        return Outcome(False, [f"{actor_name} has no movement left this turn."])
 
     before = field.occupants.get(actor_uuid)
     threat = field.occupants.get(target_uuid)
@@ -639,7 +670,7 @@ async def _do_retreat(
 
     heading = COMPASS.get(intent.direction or "")
     plan = plan_retreat(
-        field, actor_uuid, [target_uuid], field.cells_for_speed(speed), heading=heading
+        field, actor_uuid, [target_uuid], field.cells_for_speed(left), heading=heading
     )
     if not plan.path:
         if plan.blocked_by_hazard:
@@ -676,12 +707,11 @@ async def _do_move(
 ) -> Outcome:
     field = await _build_field(client)
 
-    speed = 30.0
-    actor_sheet = await sheet.read_sheet(client, actor_uuid)
-    if actor_sheet is not None:
-        speed = float(actor_sheet.get("speed") or 30)
+    left, speed = await _movement_budget(client, actor_uuid, field)
+    if left <= 0:
+        return Outcome(False, [f"{actor_name} has no movement left this turn."])
 
-    budget = field.cells_for_speed(speed)
+    budget = field.cells_for_speed(left)
     plan = plan_move_into_reach(
         field, actor_uuid, target_uuid, budget, MELEE_REACH_CELLS, allow_hazards=accept_hazard
     )

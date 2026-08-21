@@ -78,6 +78,16 @@ async def snapshot(client: GhostClient) -> dict[str, Any]:
             "bonus": bool(budget.get("bonus")),
             "movement_used_ft": int(budget.get("movementUsed") or 0),
             "speed_ft": int(budget.get("speed") or 30),
+            # What is actually left, Dash included. Reporting speed and spend
+            # separately made the model do the subtraction, and it got a Dashed
+            # creature wrong every time because the bonus was invisible.
+            "movement_left_ft": max(
+                0,
+                int(budget.get("speed") or 30)
+                + int(budget.get("speedBonus") or 0)
+                - int(budget.get("movementUsed") or 0),
+            ),
+            "dash_bonus_ft": int(budget.get("speedBonus") or 0),
         },
         "walls": len(field.blocked),
         "hazards": len(field.hazardous),
@@ -150,7 +160,10 @@ def render(state: dict[str, Any]) -> str:
         lines.append(
             f"This turn: action {'spent' if b['action'] else 'available'}, "
             f"bonus {'spent' if b['bonus'] else 'available'}, "
-            f"moved {b['movement_used_ft']} of {b['speed_ft']} ft"
+            f"moved {b['movement_used_ft']} of "
+            f"{b['speed_ft'] + b['dash_bonus_ft']} ft"
+            + (" (dashed)" if b["dash_bonus_ft"] else "")
+            + f", {b['movement_left_ft']} ft left"
         )
 
     lines.append("")
