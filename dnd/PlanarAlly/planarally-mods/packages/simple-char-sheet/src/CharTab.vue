@@ -31,6 +31,7 @@ import {
     suggestedMaxHp,
     weaponActions,
 } from "./rules";
+import { sendCommand } from "./ghostbridge";
 import { useSheet } from "./sheet";
 
 const SYNC = { ui: true, server: true };
@@ -201,6 +202,58 @@ function spendSlot(level: string, delta: number): void {
     if (slot === undefined) return;
     slot.used = Math.min(slot.max, Math.max(0, slot.used + delta));
     save();
+}
+
+// ---- DM repair ------------------------------------------------------------
+//
+// Three things that go wrong in play and have no other route back. Deliberately
+// blunt: none of them obeys a rule, because the point is to overrule the board
+// when it and the fiction have come apart.
+
+const repairNote = ref("");
+const teleportQ = ref(0);
+const teleportR = ref(0);
+const restockTo = ref(1);
+
+/** Full hit points, no temp, and the death-save state cleared. */
+async function repairHeal(): Promise<void> {
+    const max = data.value.hp.max;
+    data.value.hp.current = max;
+    data.value.hp.temp = 0;
+    save();
+    // The ghost owns death saves -- they live in a room block this mod does not
+    // write -- so a local heal alone leaves a revived character still marked as
+    // dying. Its `heal` command clears them and narrates, and going through it
+    // means one implementation of "back on their feet" rather than two.
+    const name = tokenName.value.trim();
+    const viaGhost = name.length > 0 && (await sendCommand(`heal ${name}`));
+    repairNote.value = viaGhost
+        ? `Healed to ${max}. Death saves cleared.`
+        : `Healed to ${max} locally -- the ghost did not answer, so death saves may still be set.`;
+}
+
+/** Put the token on a cell, ignoring terrain, movement and reactions. */
+async function repairTeleport(): Promise<void> {
+    const name = tokenName.value.trim();
+    if (name.length === 0) {
+        repairNote.value = "This token has no name for the ghost to address.";
+        return;
+    }
+    const ok = await sendCommand(`teleport ${name} to ${teleportQ.value} ${teleportR.value}`);
+    // The ghost refuses a wall or an occupied cell, and says so in the console
+    // log. Repeating its reasoning here would mean re-deriving it.
+    repairNote.value = ok
+        ? `Asked the ghost to place ${name} at ${teleportQ.value},${teleportR.value}. See the console log.`
+        : "The ghost did not answer.";
+}
+
+/** Set every consumable in the catalogue to the same count. */
+function repairRestock(): void {
+    const n = Math.max(0, Math.floor(restockTo.value));
+    const list = (catalogue.value.items ?? []).filter((i) => n > 0).map((i) => ({ id: i.id, quantity: n }));
+    data.value.inventory = list;
+    save();
+    repairNote.value = n === 0 ? "Inventory emptied." : `Every consumable set to ${n}.`;
 }
 
 function restoreSlots(): void {
@@ -981,6 +1034,46 @@ async function removePreset(): Promise<void> {
                 Presets are shared by the whole campaign and are not tied to an asset, so a statline can be reused for
                 any token.
             </p>
+        </section>
+
+        <section>
+            <h3>Repair</h3>
+            <p class="muted small">
+                For putting the board back when it and the fiction have come apart. None of these obeys a rule &mdash;
+                that is the point. Spell slots are the &ldquo;long rest&rdquo; button in Spells.
+            </p>
+
+            <div class="row">
+                <label>Hit points</label>
+                <div class="inline">
+                    <button type="button" title="Back to full, temp cleared, death saves cleared" @click="repairHeal">
+                        Heal to full
+                    </button>
+                </div>
+            </div>
+
+            <div class="row">
+                <label for="scc-tp-q">Teleport to cell</label>
+                <div class="inline">
+                    <input id="scc-tp-q" v-model.number="teleportQ" type="number" class="narrow" title="q" />
+                    <input v-model.number="teleportR" type="number" class="narrow" title="r" />
+                    <button type="button" title="Place the token here, ignoring terrain and movement" @click="repairTeleport">
+                        Go
+                    </button>
+                </div>
+            </div>
+
+            <div class="row">
+                <label for="scc-restock">Restock consumables</label>
+                <div class="inline">
+                    <input id="scc-restock" v-model.number="restockTo" type="number" min="0" class="narrow" />
+                    <button type="button" title="Set every consumable in the catalogue to this count" @click="repairRestock">
+                        Set all
+                    </button>
+                </div>
+            </div>
+
+            <p v-if="repairNote" class="muted small">{{ repairNote }}</p>
         </section>
     </div>
 </template>

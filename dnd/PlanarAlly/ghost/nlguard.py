@@ -71,8 +71,25 @@ def check(command: str, said: str, characters: list[str]) -> tuple[bool, str]:
 # -- measuring, applying a condition, healing, adjusting AC -- are the DM's
 # bookkeeping and belong to whoever is running the table, not to whoever is up.
 TURN_BOUND_ACTIONS = {
-    "attack", "move", "move_dir", "retreat", "cast", "contest", "check", "save",
+    "attack", "move", "move_dir", "retreat", "cast", "contest",
 }
+
+# Deliberately *not* turn-bound, though they look like they should be:
+#
+#   save   -- a saving throw is reactive by definition. It is almost always made
+#             by the target of something, on somebody else's turn. Spell-driven
+#             saves never noticed because `_do_cast` calls `sheet.roll_save`
+#             directly rather than going back through the command path, but a DM
+#             asking for one out loud hit a wall: "hamster dex save" on the elf's
+#             turn was refused for being the wrong creature's turn, which is the
+#             only turn it could possibly have been.
+#   check  -- same shape. A perception check when somebody sneaks past, an
+#             insight check while another player is talking; neither belongs to
+#             the creature whose turn it is.
+#
+# Both only ever roll dice, so letting them through cannot move a token or spend
+# a resource -- the failure mode the guard exists to prevent is not available to
+# them.
 
 
 def wrong_turn(action: str, actor: str | None, active: str | None) -> str | None:

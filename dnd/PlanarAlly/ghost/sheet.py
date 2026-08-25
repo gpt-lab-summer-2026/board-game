@@ -126,7 +126,9 @@ class AttackResult:
     """
 
     to_hit: Any | None
-    damage: Any
+    """None when the caller asked for the damage roll to be deferred until the
+    attack is known to have landed."""
+    damage: Any | None
     attack: dict[str, Any]
 
     def __iter__(self):
@@ -145,6 +147,16 @@ _BIAS_KEY = {
 }
 
 
+async def roll_damage(
+    client: GhostClient,
+    attack: dict[str, Any],
+    as_player: str | None = None,
+    share_with: str = "all",
+):
+    """Roll one attack descriptor's damage. Split out so it can wait for a hit."""
+    return await client.roll_dice(attack["damage"], share_with=share_with, as_player=as_player)
+
+
 async def roll_attack(
     client: GhostClient,
     shape: str,
@@ -152,6 +164,7 @@ async def roll_attack(
     bias: str = "normal",
     as_player: str | None = None,
     share_with: str = "all",
+    defer_damage: bool = False,
 ):
     """Roll a character's attack and damage, announced under their own name.
 
@@ -161,6 +174,12 @@ async def roll_attack(
 
     A save-based cantrip has no attack roll at all -- it is the target who
     rolls -- so only the damage is returned, paired with None.
+
+    `defer_damage` leaves `.damage` as None for the caller to roll later with
+    `roll_damage`. Rolling both up front put a damage die in everyone's dice log
+    on every miss -- visible, shared, and meaningless, since nothing was going to
+    be dealt. It also invited the table to read the number. Has no effect on a
+    save-based cantrip, which has no attack roll to miss with.
     """
     if kind not in ATTACK_KINDS:
         raise ValueError(f"unknown attack kind {kind!r}; expected one of {ATTACK_KINDS}")
@@ -188,7 +207,14 @@ async def roll_attack(
         return AttackResult(None, damage, attack)
 
     to_hit = await client.roll_dice(notation, share_with=share_with, as_player=as_player)
-    damage = await client.roll_dice(attack["damage"], share_with=share_with, as_player=as_player)
+    if defer_damage:
+        log.info(
+            "%s (%s%s): %s to hit, damage deferred",
+            name, kind, "" if bias == "normal" else f", {bias}", to_hit.total,
+        )
+        return AttackResult(to_hit, None, attack)
+
+    damage = await roll_damage(client, attack, as_player=as_player, share_with=share_with)
     log.info(
         "%s (%s%s): %s to hit, %s damage",
         name, kind, "" if bias == "normal" else f", {bias}", to_hit.total, damage.total,
@@ -232,6 +258,20 @@ def _bias_notation(bonus: int, bias: str) -> str:
     if bias == "disadvantage":
         return f"2d20kl1{tail}"
     return f"1d20{tail}"
+
+
+def ability_mod(sheet: dict[str, Any] | None, ability: str) -> int:
+    """The plain ability modifier, with no proficiency in it.
+
+    Distinct from `save_bonus`, which prefers the mod's computed save and so
+    includes proficiency where the character has it. Initiative is the raw
+    Dexterity modifier -- a rogue proficient in DEX saves does not add their
+    proficiency bonus to initiative -- so using `save_bonus` here would quietly
+    hand half the party two or three extra points.
+    """
+    if not sheet:
+        return 0
+    return _ability_mod((sheet.get("abilities") or {}).get(ability, 10))
 
 
 def save_bonus(sheet: dict[str, Any] | None, ability: str) -> int:

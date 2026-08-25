@@ -62,9 +62,11 @@ def cluster_url() -> str | None:
 def build_prompt(board: str, characters: list[str], active: str | None) -> str:
     """The system prompt: the contract, the grammar, and the facts."""
     turn_rule = (
-        f"\n- It is {active}'s turn. Unless the player names somebody else explicitly,"
-        f" {active} is the one acting. An action by anyone else will be refused,"
-        f" so ask rather than guessing."
+        f"\n- It is {active}'s turn. \"I\", \"me\", \"my\" and a command with no actor at"
+        f" all all mean {active}: write {active} as the actor rather than asking who"
+        f" it is. An action by anyone else will be refused, so if the player names"
+        f" somebody else, use that name and let it be refused -- do not substitute"
+        f" {active} for a name they actually said."
         if active
         else ""
     )
@@ -90,9 +92,13 @@ Rules:
 - The table above is the only source of distances, hit points, line of sight
   and sides. Never estimate any of them and never state a number that is not
   in it.
-- Name the acting character and, for anything with a target, the target. Do not
-  fill in a missing name from the table however obvious it looks: a wrong target
-  executes silently. Missing name means ask.{turn_rule}
+- Never invent a target. If the player did not say who to aim at, leave the
+  target out of the command entirely -- the console remembers who the party is
+  targeting and fills it in, and it will ask if nobody has been named yet.
+  Guessing from the table is the one thing that must not happen here: a wrong
+  target executes silently.
+- "targeting <name>" and "clear target" are commands in their own right. Pass
+  them through when the player says one; they aim nothing and cost nothing.{turn_rule}
 - A bare "attack" needs a kind. Take it from what the character is armed with in
   the table.
 - If the player is answering a yes/no question, output {CMD_PREFIX} yes or {CMD_PREFIX} no.
@@ -108,8 +114,17 @@ You: {CMD_PREFIX} elf moves away from hamster to southwest
 Player: "have the ranger shoot the orc"
 You: {CMD_PREFIX} ranger ranged attack on orc
 
+Player: "i cast ice knife"
+You: {CMD_PREFIX} <the character whose turn it is> casts ice knife
+
+Player: "targeting freak"
+You: {CMD_PREFIX} targeting freak
+
+Player: "drink a healing potion"
+You: {CMD_PREFIX} <the character whose turn it is> drinks healing potion
+
 Player: "shoot it"
-You: {ASK_PREFIX} Which character is shooting, and at what?
+You: {CMD_PREFIX} <the character whose turn it is> ranged attack
 
 Current characters: {", ".join(characters)}."""
 

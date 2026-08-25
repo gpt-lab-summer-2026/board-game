@@ -77,40 +77,87 @@ class TurnBudgetSystem implements System {
         const d = $.data;
         if (d.round === round && d.turn === turn && d.active === active) return;
 
+        // Bank what the outgoing creature had spent before overwriting it, and
+        // give the incoming one back whatever it had already spent this round.
+        // Blanking unconditionally -- which is what this did -- meant "previous
+        // turn, next turn" refunded a whole turn's economy.
+        const spent = { ...(d.spent ?? {}) };
+        if (d.active !== null) {
+            spent[d.active] = {
+                round: d.round,
+                action: d.action,
+                bonus: d.bonus,
+                movementUsed: d.movementUsed,
+                speedBonus: d.speedBonus ?? 0,
+            };
+        }
+        const restored = active === null ? undefined : spent[active];
+        const carry = restored !== undefined && restored.round === round;
+
         $.data = {
             ...d,
             round,
             turn,
             active,
-            action: false,
-            bonus: false,
-            movementUsed: 0,
-            speed: 30,
+            action: carry ? restored.action : false,
+            bonus: carry ? restored.bonus : false,
+            movementUsed: carry ? restored.movementUsed : 0,
+            speed: d.speed,
+            speedBonus: carry ? restored.speedBonus : 0,
+            spent,
             // Reactions deliberately survive: they refresh at the start of the
             // creature's *own* turn, which is handled below, not whenever any
-            // turn ends.
-            reactions: active === null ? d.reactions : dropReaction(d.reactions, active),
+            // turn ends. Only on a turn this creature has not already had --
+            // revisiting its turn must not refund the reaction either.
+            reactions:
+                active === null || carry ? d.reactions : dropReaction(d.reactions, active),
         };
         this.save();
     }
 
+    /**
+     * Mirror the active creature's live spends into `spent`.
+     *
+     * Called by every mutator, because `syncToTurn` banks on the way out and
+     * that is one moment too late: a spend made after the last sync would be
+     * captured, but only if nothing else overwrote `$.data` first. Keeping the
+     * bank current at every write makes the restore path independent of
+     * ordering.
+     */
+    private bank(next: TurnBudget): TurnBudget {
+        if (next.active === null) return next;
+        return {
+            ...next,
+            spent: {
+                ...(next.spent ?? {}),
+                [next.active]: {
+                    round: next.round,
+                    action: next.action,
+                    bonus: next.bonus,
+                    movementUsed: next.movementUsed,
+                    speedBonus: next.speedBonus ?? 0,
+                },
+            },
+        };
+    }
+
     spend(kind: BudgetKind, spent = true): void {
-        $.data = { ...$.data, [kind]: spent };
+        $.data = this.bank({ ...$.data, [kind]: spent });
         this.save();
     }
 
     spendMovement(feet: number): void {
-        $.data = { ...$.data, movementUsed: Math.max(0, $.data.movementUsed + feet) };
+        $.data = this.bank({ ...$.data, movementUsed: Math.max(0, $.data.movementUsed + feet) });
         this.save();
     }
 
     setMovement(feet: number): void {
-        $.data = { ...$.data, movementUsed: Math.max(0, feet) };
+        $.data = this.bank({ ...$.data, movementUsed: Math.max(0, feet) });
         this.save();
     }
 
     setSpeed(feet: number): void {
-        $.data = { ...$.data, speed: Math.max(0, feet) };
+        $.data = this.bank({ ...$.data, speed: Math.max(0, feet) });
         this.save();
     }
 

@@ -153,6 +153,8 @@ class GhostClient:
         # modifier wearing off -- reaches the combat log rather than only the
         # server log.
         self.on_narration: Callable[[str], Awaitable[None]] | None = None
+        """Called after every turn change, however it was caused."""
+        self.after_turn: Callable[[], Awaitable[None]] | None = None
         self._register_handlers()
 
     # ---- connection ---------------------------------------------------------
@@ -294,6 +296,9 @@ class GhostClient:
             # Ruler marks, suggestion highlights and spell effects all count
             # their lives in turns, so they expire on the same beat.
             lines.extend(f"{label}." for label in await ephemera.tick(self))
+            from . import features  # noqa: PLC0415 - same cycle as turns
+
+            lines.extend(f"{label}." for label in await features.tick(self))
             for line in lines:
                 log.info("duration: %s", line)
             if lines and self.on_narration is not None:
@@ -304,6 +309,15 @@ class GhostClient:
             log.exception("could not tick durations")
         finally:
             self._turn_hook_busy = False
+
+        # Whoever is now up may not be a player's. Called outside the busy flag
+        # so a monster's turn can itself advance the tracker, and after the
+        # durations have ticked so the creature acts on the state it wakes up in.
+        if self.after_turn is not None:
+            try:
+                await self.after_turn()
+            except Exception:  # noqa: BLE001 - the board must survive a bad turn
+                log.exception("the after-turn hook failed")
 
     async def close(self) -> None:
         if self.sio.connected:
@@ -531,10 +545,12 @@ class GhostClient:
 
         @self.sio.on("Initiative.Clear", namespace=ns)
         async def initiative_cleared(data=None):
-            # Clear drops the *effects*, not the order -- but the round goes
-            # back to 1 and the turn to the top.
-            self.state.initiative.round = 1
-            self.state.initiative.turn = 0
+            # Nothing to mirror. `clear_initiatives` only nulls each entry's
+            # rolled value; it leaves the order, the round and the turn exactly
+            # where they were. This used to reset round and turn, which put the
+            # cache one whole round out of step with the server for the rest of
+            # the fight.
+            log.info("initiative values cleared; order and turn unchanged")
 
         @self.sio.on("Initiative.Wipe", namespace=ns)
         async def initiative_wiped(data=None):

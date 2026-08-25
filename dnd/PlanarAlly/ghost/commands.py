@@ -39,6 +39,22 @@ class Action(str, Enum):
     JUMP = "jump"
     USE_ITEM = "use_item"
     DASH = "dash"
+    PROLOGUE = "prologue"
+    STORY_RESET = "story_reset"
+    TARGET = "target"
+    CLEAR_TARGET = "clear_target"
+    OPPORTUNITY = "opportunity"
+    UNDO = "undo"
+    RAGE = "rage"
+    LONG_REST = "long_rest"
+    LEVEL_UP = "level_up"
+    RESUME = "resume"
+    DM_AUTO = "dm_auto"
+    TELEPORT = "teleport"
+    SET_ROUND = "set_round"
+    ROLL_INITIATIVE = "roll_initiative"
+    CLEAR_INITIATIVE = "clear_initiative"
+    END_COMBAT = "end_combat"
     NEXT_TURN = "next_turn"
     PREV_TURN = "prev_turn"
     WHOSE_TURN = "whose_turn"
@@ -253,6 +269,10 @@ _CAST_RE = re.compile(
 )
 
 # "elf dashes", "cat takes the dash action", "elf dash"
+_RAGE_RE = re.compile(r"^\s*(?P<a>.+?)\s+(?:rages|enters?\s+(?:a\s+)?rage|goes\s+berserk)\s*$", re.I)
+_LEVEL_UP_RE = re.compile(r"^\s*(?:level\s+up\s+(?P<b>.+?)|(?P<a>.+?)\s+levels?\s+up)\s*$", re.I)
+_LONG_REST = {"long rest", "take a long rest", "the party rests", "make camp", "rest for the night"}
+
 _DASH_RE = re.compile(r"^\s*(?P<a>.+?)\s+(?:takes\s+the\s+)?dash(?:es|\s+action)?\s*$", re.I)
 
 # "elf jumps towards hamster", "cat leaps at emo", "elf jumps north"
@@ -338,6 +358,70 @@ _NEXT_TURN = {
     "im done", "pass turn", "pass the turn", "next", "end my turn",
 }
 _PREV_TURN = {"previous turn", "prev turn", "last turn", "back a turn", "go back a turn"}
+# Set the standing target, so the next few commands do not have to name it.
+# Verb-first like `measure`, and matched before the actor-verb-target patterns
+# for the same reason: nothing here is an actor.
+_TARGET_RE = re.compile(
+    r"^\s*(?:we(?:'re| are)?\s+)?(?:now\s+)?"
+    r"(?:targeting|target|targetting|focus(?:ing)?\s+(?:on|fire\s+on)|aim(?:ing)?\s+at)"
+    r"\s+(?P<t>.+?)\s*$",
+    re.I,
+)
+# A reaction, so verb-first-ish and matched before the generic attack shapes --
+# "hamster takes an opportunity attack on elf" also parses as a plain attack,
+# and the plain reading would route it through `_do_move` and walk the hamster
+# across the map after the creature that just fled it.
+_OPPORTUNITY_RE = re.compile(
+    r"^\s*(?P<a>.+?)\s+(?:takes?\s+)?(?:an?\s+|the\s+)?"
+    r"(?:opportunity|attack\s+of\s+opportunity|reaction)\s*(?:attack)?\s*"
+    r"(?:on|at|against)\s+(?P<t>.+?)\s*$",
+    re.I,
+)
+
+_UNDO = {
+    "undo", "undo that", "take that back", "scratch that", "revert",
+    "undo the last thing", "put that back",
+}
+# Deliberately absent from HELP_TEXT. It is DM housekeeping the model never
+# needs to produce, and every line in that text is spent on every cluster call --
+# so it parses locally from an exact phrase and costs the prompt nothing.
+_SET_ROUND_RE = re.compile(
+    r"^\s*(?:set\s+|go\s+)?(?:back\s+to\s+)?round\s+(?:to\s+)?(?P<n>\d+|one)\s*$",
+    re.I,
+)
+# Also absent from HELP_TEXT: a repair tool, not a move. Nothing about it obeys
+# movement, terrain or the turn budget, which is exactly why the model should
+# never be able to reach for it.
+_TELEPORT_RE = re.compile(
+    r"^\s*(?:teleport|place|put)\s+(?P<a>.+?)\s+(?:to|at)\s+"
+    r"(?P<q>-?\d+)\s*[, ]\s*(?P<r>-?\d+)\s*$",
+    re.I,
+)
+# Grammar-only, like the other housekeeping: the model has no business turning
+# the monsters off.
+_RESUME = {
+    "resume", "continue", "carry on", "keep going", "go on", "pick up",
+    "pick up where we left off", "play the monsters", "run the monsters",
+    "resume combat", "your turn ghost", "take the enemy turns",
+}
+_DM_ON = {"dm auto on", "ghost runs the monsters", "monsters on", "dm on", "auto dm on"}
+_DM_OFF = {"dm auto off", "i'll run the monsters", "monsters off", "dm off", "auto dm off"}
+_RESET_ROUND = {"reset the round", "reset round", "restart the round count"}
+_ROLL_INITIATIVE = {
+    "roll initiative", "roll for initiative", "initiative", "roll initiatives",
+    "start combat", "begin combat", "everyone roll initiative", "roll init",
+}
+_CLEAR_INITIATIVE = {"clear initiative", "reset initiative", "clear the tracker"}
+_END_COMBAT = {"end combat", "combat over", "end the fight", "stop combat", "wipe initiative"}
+_PROLOGUE = {
+    "begin", "begin the story", "opening", "prologue", "tell the story",
+    "set the scene", "story", "tell it again", "read the opening",
+}
+_STORY_RESET = {"reset the story", "forget the story", "new session"}
+_CLEAR_TARGET = {
+    "clear target", "clear the target", "stop targeting", "no target",
+    "forget the target", "untarget", "drop target",
+}
 _WHOSE_TURN = {
     "whose turn", "whose turn is it", "who's turn", "whos turn", "who is up",
     "who's up", "turn order", "initiative order",
@@ -367,6 +451,49 @@ def parse(text: str) -> Intent:
         return Intent(Action.PREV_TURN, raw=raw)
     if lowered in _WHOSE_TURN:
         return Intent(Action.WHOSE_TURN, raw=raw)
+    ported = _TELEPORT_RE.match(trimmed if False else raw)
+    if ported:
+        who = _clean(ported["a"].split())
+        if who:
+            # q and r ride on the two spare integer fields rather than adding a
+            # pair of coordinates to every Intent for one command's sake.
+            return Intent(Action.TELEPORT, actor=who, dc=int(ported["q"]),
+                          heal_amount=int(ported["r"]), raw=raw)
+    if lowered in _RESUME:
+        return Intent(Action.RESUME, raw=raw)
+    if lowered in _DM_ON:
+        return Intent(Action.DM_AUTO, condition_on=True, raw=raw)
+    if lowered in _DM_OFF:
+        return Intent(Action.DM_AUTO, condition_on=False, raw=raw)
+    if lowered in _LONG_REST:
+        return Intent(Action.LONG_REST, raw=raw)
+    if lowered in _RESET_ROUND:
+        return Intent(Action.SET_ROUND, dc=1, raw=raw)
+    numbered = _SET_ROUND_RE.match(lowered)
+    if numbered:
+        n = numbered["n"]
+        # `dc` is the intent's general-purpose integer; a second one just for
+        # this would be a field on every Intent for one command's sake.
+        return Intent(Action.SET_ROUND, dc=1 if n == "one" else int(n), raw=raw)
+    if lowered in _UNDO:
+        return Intent(Action.UNDO, raw=raw)
+    if lowered in _ROLL_INITIATIVE:
+        return Intent(Action.ROLL_INITIATIVE, raw=raw)
+    if lowered in _CLEAR_INITIATIVE:
+        return Intent(Action.CLEAR_INITIATIVE, raw=raw)
+    if lowered in _END_COMBAT:
+        return Intent(Action.END_COMBAT, raw=raw)
+    if lowered in _PROLOGUE:
+        return Intent(Action.PROLOGUE, raw=raw)
+    if lowered in _STORY_RESET:
+        return Intent(Action.STORY_RESET, raw=raw)
+    if lowered in _CLEAR_TARGET:
+        return Intent(Action.CLEAR_TARGET, raw=raw)
+    aimed = _TARGET_RE.match(raw)
+    if aimed:
+        who = _clean(aimed["t"].split())
+        if who:
+            return Intent(Action.TARGET, target=who, raw=raw)
     if lowered in _YES:
         return Intent(Action.CONFIRM, raw=raw)
     if lowered in _NO:
@@ -477,6 +604,25 @@ def parse(text: str) -> Intent:
             contest=contest_m["verb"].rstrip("s").lower(),
             raw=raw,
         )
+
+    opp = _OPPORTUNITY_RE.match(trimmed)
+    if opp:
+        who, whom = _clean(opp["a"].split()), _clean(opp["t"].split())
+        if who and whom:
+            return Intent(Action.OPPORTUNITY, actor=who, target=whom,
+                          kind=AttackKind.MELEE, bias=bias, raw=raw)
+
+    raged = _RAGE_RE.match(trimmed)
+    if raged:
+        who = _clean(raged["a"].split())
+        if who:
+            return Intent(Action.RAGE, actor=who, raw=raw)
+
+    levelled = _LEVEL_UP_RE.match(trimmed)
+    if levelled:
+        who = _clean((levelled["a"] or levelled["b"] or "").split())
+        if who:
+            return Intent(Action.LEVEL_UP, actor=who, raw=raw)
 
     dashed = _DASH_RE.match(trimmed)
     if dashed:
@@ -641,14 +787,18 @@ def parse(text: str) -> Intent:
 
     if actor is None:
         raise ParseError(f"Who is acting? I heard {raw!r}.")
-    if target is None:
-        raise ParseError(f"{actor} needs a target. Try '{actor} melee attack on goblin'.")
+    # A targetless attack parses. It used to be a ParseError, which meant "elf
+    # attacks" could never be completed from the standing target however clearly
+    # it had just been set -- and worse, the failure sent the line off to the
+    # translator as if it were prose. The console fills the target in and gives
+    # a better refusal than this could if there is nothing to fill it from.
 
     if action is Action.ATTACK and kind is None:
         # "cast"/"shoot" already imply a kind; a bare "attack" does not, and
         # guessing melee would send a wizard running at a dragon.
         raise ParseError(
-            f"Melee, ranged or cantrip? Try '{actor} ranged attack on {target}'."
+            f"Melee, ranged or cantrip? Try '{actor} ranged attack"
+            + (f" on {target}'." if target else "'.")
         )
 
     return Intent(action=action, actor=actor, target=target, kind=kind, bias=bias, raw=raw)
@@ -676,6 +826,15 @@ HELP_TEXT = """Commands:
   <actor> <skill> check [dc N]         one ability or skill check
   <actor> grapples/shoves/topples <target>   a contested check
   <actor> dashes                       double movement for the turn
+  <actor> rages                        barbarian: bonus melee damage, half damage taken
+  long rest                            hit points, slots and rages back to full
+  begin                                read the opening out loud
+  targeting <name>                     remember who to aim at; later commands may omit the target
+  clear target                         forget it again
+  <actor> opportunity attack on <target>   a reaction: no movement, and it costs the reaction
+  undo                                 put back whatever the last command changed
+  resume                               ghost plays every enemy turn up to your character's
+  roll initiative / end combat         start or finish combat for everyone on the board
   next turn                            end the current turn and start the next
   previous turn                        step the tracker back one
   whose turn                           read the order back without changing it

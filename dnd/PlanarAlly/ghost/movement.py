@@ -479,16 +479,19 @@ async def walk(
     creature crossing the room takes visibly longer than one stepping aside --
     and a Dash covering twice the ground takes twice as long.
     """
-    from .grid import cell_center
+    from .grid import cell_anchor
 
     if not plan.path:
         return
 
+    # Anchors, not centres. The shape's current x/y is a top-left corner, so
+    # interpolating from it towards a run of cell *centres* also put a half-cell
+    # jump at the start of every walk.
     start = client.state.shapes.get(uuid) or {}
     points: list[tuple[float, float]] = []
     if start.get("x") is not None and start.get("y") is not None:
         points.append((float(start["x"]), float(start["y"])))
-    points.extend(cell_center(cell, field.grid) for cell in plan.path)
+    points.extend(cell_anchor(cell, field.grid) for cell in plan.path)
 
     feet = plan.steps * field.unit_size
     seconds = max(0.2, feet / feet_per_second) if feet_per_second > 0 else 0.0
@@ -503,7 +506,7 @@ async def walk(
     # Land exactly on the destination: the last interpolated frame is within a
     # rounding error of it, and a token parked half a pixel off its cell centre
     # will fail an occupancy test later.
-    final_x, final_y = cell_center(plan.path[-1], field.grid)
+    final_x, final_y = cell_anchor(plan.path[-1], field.grid)
     await client.move_shape(uuid, final_x, final_y)
 
     occupant = field.occupants.get(uuid)

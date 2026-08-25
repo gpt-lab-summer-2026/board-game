@@ -8,12 +8,16 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass, field as dc_field
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field as dc_field, replace
 from typing import Any
 
 from . import deathsaves
 from . import ephemera
+from . import features
 from . import initiative
+from . import lore
+from . import reaction
 from . import sheet
 from . import turns
 from . import battlefield
@@ -62,6 +66,14 @@ class Pending:
     move_to: list = dc_field(default_factory=list)
     then: "Intent | None" = None
     marker_uuids: list[str] = dc_field(default_factory=list)
+    """A third shape: resume a half-resolved action with the answer.
+
+    The first two kinds re-run something from the start once permission is
+    given. A Shield offer cannot -- the attack roll has already happened, and
+    re-rolling it would be a different attack. So the question carries the rest
+    of the resolution as a closure, and yes and no are two ways of finishing the
+    same swing."""
+    on_answer: "Callable[[bool], Awaitable[Outcome]] | None" = None
 
 
 @dataclass
@@ -82,15 +94,42 @@ class Outcome:
         return " ".join(self.lines)
 
 
+# Actions where a missing target can be filled from the standing focus. Left
+# out on purpose: USE_ITEM, because "drinks a healing potion" is the common case
+# and quietly throwing it at whoever the party was aiming at would be worse than
+# asking; and CAST, which is filled further down by `_do_cast` instead, once the
+# spell is known -- Shield is a self buff, and applying it to the focus would
+# armour the wrong creature.
+FOCUSABLE_ACTIONS = {
+    Action.ATTACK, Action.MEASURE, Action.MOVE, Action.RETREAT,
+    Action.CONTEST, Action.JUMP,
+}
+
+
 async def execute(
     client: GhostClient,
     intent: Intent,
     *,
     as_player: str | None = None,
     accept_hazard: bool = False,
+    focus: str | None = None,
 ) -> Outcome:
     if intent.action is Action.HELP:
         return Outcome(True, HELP_TEXT.splitlines())
+
+    # The standing target, applied here in code rather than by the translator.
+    # Deliberate: a name the model wrote is checked against what the player
+    # actually said, and would be rejected as invented -- correctly, because the
+    # model has no way to know it was established three sentences ago. Filling
+    # it in after that check keeps the guard honest and makes the substitution
+    # deterministic instead of something the prompt has to remember.
+    if (
+        focus
+        and intent.target is None
+        and intent.action in FOCUSABLE_ACTIONS
+        and not (intent.action is Action.JUMP and intent.direction)
+    ):
+        intent = replace(intent, target=focus)
 
     # Turn control names nobody, so it has to be resolved before the actor
     # lookup below -- which would otherwise refuse it for want of a character
@@ -104,9 +143,39 @@ async def execute(
     if intent.action is Action.WHOSE_TURN:
         return Outcome(True, await initiative.whose_turn(client))
 
+    if intent.action is Action.ROLL_INITIATIVE:
+        return Outcome(True, await initiative.roll(client))
+
+    if intent.action is Action.LONG_REST:
+        return await _do_long_rest(client)
+
+    if intent.action is Action.SET_ROUND:
+        return Outcome(True, await initiative.set_round(client, intent.dc or 1))
+
+    if intent.action is Action.CLEAR_INITIATIVE:
+        return Outcome(True, await initiative.clear(client))
+
+    if intent.action is Action.END_COMBAT:
+        return Outcome(True, await initiative.end_combat(client))
+
+    if intent.action is Action.PROLOGUE:
+        return Outcome(True, await lore.opening(client, force=intent.raw.lower() == "tell it again"))
+
+    if intent.action is Action.STORY_RESET:
+        return Outcome(True, await lore.reset(client))
+
     actor_uuid = client.state.find_shape(intent.actor or "")
     if actor_uuid is None:
         return Outcome(False, [f"I can't find a character called {intent.actor!r}."])
+
+    if intent.action is Action.TELEPORT:
+        return await _do_teleport(client, actor_uuid, intent)
+
+    if intent.action is Action.RAGE:
+        return await _do_rage(client, actor_uuid, intent)
+
+    if intent.action is Action.LEVEL_UP:
+        return await _do_level_up(client, actor_uuid, intent)
 
     if intent.action is Action.DUPLICATE:
         return await _do_duplicate(client, actor_uuid, intent)
@@ -156,9 +225,18 @@ async def execute(
             spell_target = client.state.find_shape(intent.target)
             if spell_target is None:
                 return Outcome(False, [f"I can't find a target called {intent.target!r}."])
-        return await _do_cast(client, actor_uuid, spell_target, intent, as_player)
+        return await _do_cast(client, actor_uuid, spell_target, intent, as_player, focus=focus)
 
-    target_uuid = client.state.find_shape(intent.target or "")
+    if intent.target is None:
+        # Distinct from "that name is not on the board". Nothing was named at
+        # all, which after the focus substitution above means nothing is set --
+        # so say what to do about it rather than reporting a target called None.
+        return Outcome(
+            False,
+            [f"Who is {intent.actor} {intent.action.value.replace('_', ' ')}ing? "
+             "Name them, or say 'targeting <name>' first."],
+        )
+    target_uuid = client.state.find_shape(intent.target)
     if target_uuid is None:
         return Outcome(False, [f"I can't find a target called {intent.target!r}."])
     if actor_uuid == target_uuid:
@@ -172,6 +250,11 @@ async def execute(
 
     if intent.action is Action.RETREAT:
         return await _do_retreat(client, actor_uuid, target_uuid, actor_name, target_name, intent)
+
+    if intent.action is Action.OPPORTUNITY:
+        return await _do_opportunity(
+            client, actor_uuid, target_uuid, actor_name, target_name, intent, as_player
+        )
 
     if intent.action is Action.CONTEST:
         return await _do_contest(client, actor_uuid, target_uuid, intent, as_player)
@@ -439,6 +522,9 @@ async def _do_use_item(client, actor_uuid, target_uuid, intent: Intent, as_playe
     if data is None:
         return Outcome(False, [f"{name} has no sheet, so nothing to carry."])
 
+    if not await turns.has(client, actor_uuid, "action"):
+        return Outcome(False, [f"{name} has already used its action this turn."])
+
     carried, entry = await sheet.find_carried(client, data, intent.item or "")
     if carried is None:
         have = await sheet.carried_names(client, data)
@@ -448,6 +534,7 @@ async def _do_use_item(client, actor_uuid, target_uuid, intent: Intent, as_playe
         )
 
     left = await sheet.spend_item(client, actor_uuid, entry["id"])
+    await turns.spend(client, actor_uuid, "action")
     label = carried.get("name") or intent.item
     out = Outcome(True, [f"{name} uses {label} ({left} left)."])
 
@@ -605,6 +692,155 @@ async def _movement_budget(client, actor_uuid: str, field=None) -> tuple[float, 
     return left, speed
 
 
+async def _do_opportunity(
+    client, actor_uuid, target_uuid, actor_name, target_name, intent, as_player
+) -> Outcome:
+    """A melee attack taken as a reaction, with no movement.
+
+    A distinct action rather than a reused ATTACK, and that is the whole point:
+    `execute` routes a melee attack through `_do_move` first, so reusing it here
+    would walk the reactor across the map chasing the creature that just fled
+    its reach -- the exact opposite of what an opportunity attack is.
+
+    The reaction is spent on a miss as well as a hit. It is the swing that costs
+    it, not the outcome.
+    """
+    if not await turns.has_reaction(client, actor_uuid):
+        return Outcome(False, [f"{actor_name} has already used its reaction this round."])
+
+    out = await _do_attack(
+        client, actor_uuid, target_uuid, actor_name, target_name,
+        replace(intent, action=Action.ATTACK, kind=intent.kind or AttackKind.MELEE),
+        as_player,
+        [f"{actor_name} takes an opportunity attack on {target_name}."],
+        costs_action=False,
+    )
+    await turns.use_reaction(client, actor_uuid)
+    return out
+
+
+async def _do_teleport(client, actor_uuid: str, intent: Intent) -> Outcome:
+    """Put a token on a cell, ignoring everything.
+
+    A repair tool, not a move: no pathfinding, no terrain, no movement budget,
+    no opportunity attacks. It exists for the times the board and the fiction
+    have come apart -- a token dragged somewhere impossible, a test that left
+    somebody in a wall -- and the fastest fix is to state where they should be.
+
+    It does refuse an occupied cell, because two creatures in one hex breaks
+    every distance the rest of the system computes.
+    """
+    from .grid import Cell, cell_anchor
+
+    name = _display_name(client, actor_uuid, intent.actor)
+    field = await _build_field(client)
+    cell = Cell(int(intent.dc or 0), int(intent.heal_amount or 0))
+
+    if cell in field.blocked:
+        return Outcome(False, [f"{cell.q},{cell.r} is inside a wall."])
+    standing = field.occupied.get(cell)
+    if standing is not None and standing != actor_uuid:
+        other = _display_name(client, standing, None)
+        return Outcome(False, [f"{other} is already standing on {cell.q},{cell.r}."])
+
+    x, y = cell_anchor(cell, field.grid)
+    await client.move_shape(actor_uuid, x, y)
+    return Outcome(True, [f"{name} is now at {cell.q},{cell.r}."])
+
+
+# Levels past the first use the hit die's average rounded up, as 5e's fixed
+# progression does. Copied from the mod's `suggestedMaxHp` rather than invented:
+# levelling in two places must not produce two different characters.
+_HIT_DICE = {"barbarian": 12, "cleric": 8, "rogue": 8, "wizard": 6, "beast": 10}
+MAX_LEVEL = 20
+
+
+async def _do_rage(client, actor_uuid: str, intent: Intent) -> Outcome:
+    """Barbarian only, a bonus action, twice a day."""
+    name = _display_name(client, actor_uuid, intent.actor)
+    data = await sheet.read_sheet(client, actor_uuid)
+    if str((data or {}).get("classId") or "").lower() != "barbarian":
+        return Outcome(False, [f"{name} is not a barbarian."])
+    if await features.raging(client, actor_uuid):
+        return Outcome(False, [f"{name} is already raging."])
+    if not await turns.has(client, actor_uuid, "bonus"):
+        return Outcome(False, [f"{name} has already used its bonus action this turn."])
+
+    lines = await features.start_rage(client, actor_uuid, name)
+    # Only spend the bonus action if a rage actually started; being told there
+    # are none left should not also cost the turn's bonus action.
+    if await features.raging(client, actor_uuid):
+        await turns.spend(client, actor_uuid, "bonus")
+    return Outcome(True, lines)
+
+
+async def _do_long_rest(client) -> Outcome:
+    """Hit points, slots, rages and death saves, all the way back.
+
+    Everyone at once, because that is what a long rest is -- and because doing
+    it per character would mean seven commands and one of them being forgotten.
+    """
+    lines: list[str] = []
+    for name, uuid in sorted(client.state.characters.items()):
+        data = await sheet.read_sheet(client, uuid)
+        if data is None:
+            continue
+        hp = data.get("hp") or {}
+        maximum = int(hp.get("max") or 0)
+        was = int(hp.get("current") or 0)
+        for slot in (data.get("slots") or {}).values():
+            if isinstance(slot, dict):
+                slot["used"] = 0
+        data["hp"] = {**hp, "current": maximum, "temp": 0}
+        await sheet.write_sheet(client, uuid, data)
+        await features.long_rest(client, uuid)
+        for line in await deathsaves.on_healed(client, uuid, name):
+            lines.append(line)
+        if was != maximum:
+            lines.append(f"{name} {was} to {maximum}")
+    await turns.clear_spent(client)
+    head = "The party takes a long rest: hit points, spell slots and rages are back."
+    return Outcome(True, [head] + ([", ".join(lines) + "."] if lines else []))
+
+
+async def _do_level_up(client, actor_uuid: str, intent: Intent) -> Outcome:
+    """One level, and the hit points that come with it.
+
+    Refused while initiative is running. Levelling mid-fight would change the
+    numbers the encounter is being balanced against halfway through it, and the
+    table asked for it to wait until the encounter is over.
+    """
+    name = _display_name(client, actor_uuid, intent.actor)
+    if client.state.initiative.order and client.state.initiative.is_active:
+        return Outcome(False, ["Finish the fight first -- say 'end combat' when it is over."])
+
+    data = await sheet.read_sheet(client, actor_uuid)
+    if data is None:
+        return Outcome(False, [f"{name} has no sheet."])
+    klass = str(data.get("classId") or "").lower()
+    if not klass:
+        return Outcome(False, [f"{name} has no class to level."])
+    level = int(data.get("level") or 1)
+    if level >= MAX_LEVEL:
+        return Outcome(False, [f"{name} is already level {level}."])
+
+    die = _HIT_DICE.get(klass, 8)
+    con = (int((data.get("abilities") or {}).get("con") or 10) - 10) // 2
+    gain = max(1, (die // 2 + 1) + con)
+    hp = data.get("hp") or {}
+    data["level"] = level + 1
+    data["hp"] = {
+        **hp,
+        "max": int(hp.get("max") or 0) + gain,
+        "current": int(hp.get("current") or 0) + gain,
+    }
+    await sheet.write_sheet(client, actor_uuid, data)
+    return Outcome(True, [
+        f"{name} reaches level {level + 1}: +{gain} hit points, now {data['hp']['max']} max.",
+        "Open the character tab to pick up the new spell slots and level-2 feature.",
+    ])
+
+
 async def _do_dash(client, actor_uuid: str, intent: Intent) -> Outcome:
     """Trade the action for a second helping of movement.
 
@@ -693,13 +929,62 @@ async def _do_retreat(
     ])
     if intent.direction and not plan.heading_honoured:
         out.say(f"Nothing to the {intent.direction} was reachable, so it went the other way.")
-    # Worth saying out loud: leaving a threatened square is what provokes, and
-    # the ghost is not going to roll someone else's reaction unasked.
-    if gap_before <= MELEE_REACH_CELLS:
-        out.say(f"That leaves {target_name}'s reach, so it may take an opportunity attack.")
     if plan.reason is StopReason.OUT_OF_MOVEMENT:
         out.say(f"That is all the movement {actor_name} has.")
+
+    # Leaving a threatened square is what provokes. Offered, never rolled: it is
+    # somebody else's reaction, and the ghost taking it unasked would be making
+    # a decision that belongs to whoever is running that creature.
+    if gap_before <= MELEE_REACH_CELLS:
+        offer = await _opportunity_offer(
+            client, threat_uuid=target_uuid, threat_name=target_name,
+            mover_uuid=actor_uuid, mover_name=actor_name,
+        )
+        if offer is not None:
+            out.say(offer.question)
+            out.pending = offer
+        else:
+            out.say(f"That leaves {target_name}'s reach, but it cannot react.")
     return out
+
+
+async def _opportunity_offer(
+    client, *, threat_uuid: str, threat_name: str, mover_uuid: str, mover_name: str
+) -> "Pending | None":
+    """The held question, or None when there is nothing to ask.
+
+    Three gates, and each one is a different kind of wrong answer if skipped:
+    a creature on the same side does not swing at its own; an unconscious one
+    cannot swing at all; and one that has already reacted this round would be
+    taking a second reaction. `Pending` is single-slot on purpose -- if a
+    retreat leaves two threatened squares, only the creature being retreated
+    *from* is offered, and the rest is narration.
+    """
+    sides = await _sides(client)
+    if sides.get(threat_uuid) == sides.get(mover_uuid):
+        return None
+
+    threat_sheet = await sheet.read_sheet(client, threat_uuid)
+    if threat_sheet is not None and int((threat_sheet.get("hp") or {}).get("current", 1)) <= 0:
+        return None
+
+    if not await turns.has_reaction(client, threat_uuid):
+        return None
+
+    return Pending(
+        intent=Intent(
+            Action.OPPORTUNITY, actor=threat_name, target=mover_name,
+            kind=AttackKind.MELEE, raw=f"{threat_name} opportunity attack on {mover_name}",
+        ),
+        # The reactor is the actor here, not the creature that moved: the
+        # question is whether *it* swings, and it is the one that pays.
+        actor_uuid=threat_uuid,
+        target_uuid=mover_uuid,
+        question=(
+            f"That leaves {threat_name}'s reach. "
+            f"Does {threat_name} take its opportunity attack?"
+        ),
+    )
 
 
 async def _do_move(
@@ -883,6 +1168,9 @@ async def _do_contest(
     actor_name = _display_name(client, actor_uuid, intent.actor)
     target_name = _display_name(client, target_uuid, intent.target)
 
+    if not await turns.has(client, actor_uuid, "action"):
+        return Outcome(False, [f"{actor_name} has already used its action this turn."])
+
     attack_roll, attack_bonus, _ = await sheet.roll_check(
         client, actor_uuid, attacker_skill, bias=intent.bias, as_player=as_player or actor_name
     )
@@ -895,6 +1183,9 @@ async def _do_contest(
     defend_roll, defend_bonus, _ = await sheet.roll_check(
         client, target_uuid, best, as_player=target_name
     )
+
+    # Spent on a lost contest too: the attempt is the action, not the result.
+    await turns.spend(client, actor_uuid, "action")
 
     out = Outcome(True, [
         f"{actor_name} tries to {kind} {target_name}: "
@@ -914,12 +1205,22 @@ async def _do_contest(
 
 
 async def _do_cast(
-    client, actor_uuid: str, target_uuid: str | None, intent: Intent, as_player: str | None
+    client, actor_uuid: str, target_uuid: str | None, intent: Intent, as_player: str | None,
+    *, focus: str | None = None,
 ) -> Outcome:
     """Cast a prepared levelled spell, spending a slot."""
     actor_name = _display_name(client, actor_uuid, intent.actor)
     caster = await sheet.read_sheet(client, actor_uuid)
     spell = sheet.find_prepared(caster, intent.spell or "")
+
+    # The standing target, but only for spells that are aimed at somebody else.
+    # A "buff" defaults its subject to the caster, and letting the focus win
+    # there would put the party's Shield on the creature they are shooting at.
+    if focus and target_uuid is None and (spell or {}).get("kind") != "buff":
+        found = client.state.find_shape(focus)
+        if found is not None and found != actor_uuid:
+            target_uuid = found
+            intent = replace(intent, target=focus)
 
     if spell is None:
         # "casts" was already a cantrip verb before levelled spells existed, so
@@ -948,9 +1249,18 @@ async def _do_cast(
             ],
         )
 
+    if not await turns.has(client, actor_uuid, "action"):
+        return Outcome(False, [f"{actor_name} has already used its action this turn."])
+
     ok, left = await sheet.spend_slot(client, actor_uuid, int(spell.get("level") or 1))
     if not ok:
         return Outcome(False, [f"{actor_name} has no level {spell.get('level')} slots left."])
+
+    # After the slot, so a cast refused for want of a slot does not also cost
+    # the action. Casting time is not modelled -- everything is an action -- so
+    # a bonus-action spell is currently charged as one; the sheet has no field
+    # to tell them apart yet.
+    await turns.spend(client, actor_uuid, "action")
 
     name = spell.get("name") or intent.spell
     out = Outcome(True, [f"{actor_name} casts {name} ({left} slot(s) left)."])
@@ -1013,6 +1323,10 @@ async def _do_cast(
     if kind == "auto":
         damage = await client.roll_dice(spell["damage"], share_with="all", as_player=as_player or actor_name)
         out.say(f"{name} strikes automatically.")
+        if target_uuid is not None and await reaction.available(client, target_uuid):
+            return await _offer_shield_vs_auto(
+                client, target_uuid, target_name, name, damage.total, intent, out,
+            )
         return await _land(client, target_uuid, target_name, damage.total, out)
 
     # An attack-roll spell.
@@ -1028,6 +1342,145 @@ async def _do_cast(
         return out.say(f"{to_hit.total} misses AC {armour_class}.")
     out.say(f"{to_hit.total} hits AC {armour_class}.")
     return await _land(client, target_uuid, target_name, damage.total, out)
+
+
+async def _class_damage(
+    client, actor_uuid: str, target_uuid: str, attack, crit: bool, roller: str, out: Outcome,
+) -> int:
+    """Extra damage the attacker's class adds to a hit that has already landed.
+
+    Both features here are additions to a specific blow rather than standing
+    bonuses, which is why they are worked out at the moment of impact and not
+    folded into the weapon's damage on the sheet.
+    """
+    data = await sheet.read_sheet(client, actor_uuid)
+    if data is None:
+        return 0
+    klass = str(data.get("classId") or "").lower()
+    level = int(data.get("level") or 1)
+    name = _display_name(client, actor_uuid, None)
+    bonus = 0
+
+    # Rage adds to melee only -- it is fury, not marksmanship.
+    if klass == "barbarian" and await features.raging(client, actor_uuid):
+        if str((attack or {}).get("kind") or "melee") == "melee":
+            bonus += features.RAGE_DAMAGE
+            out.say(f"{name} is raging: +{features.RAGE_DAMAGE}.")
+
+    if klass == "rogue":
+        field = await _build_field(client)
+        armed = await features.melee_armed(client, field.occupants)
+        # "Threatened by somebody other than me": the rogue standing next to its
+        # own mark is not what qualifies, an accomplice is.
+        ally = features.threatened_by(
+            field, target_uuid, await _sides(client), armed, ignore=actor_uuid
+        )
+        if ally is not None:
+            dice = features.sneak_dice(level)
+            notation = f"{dice}d6" + (f"+{dice}d6" if crit else "")
+            roll = await client.roll_dice(notation, share_with="all", as_player=roller)
+            bonus += roll.total
+            out.say(
+                f"Sneak Attack: {ally} has it occupied, so {name} adds "
+                f"{roll.total} ({notation})."
+            )
+    return bonus
+
+
+async def _offer_shield_vs_auto(
+    client, target_uuid: str, target_name: str | None, spell_name, amount: int,
+    intent: Intent, out: Outcome,
+) -> Outcome:
+    """Shield against something with no attack roll.
+
+    Magic Missile is the case: it has no roll to beat, and Shield stops it
+    outright rather than raising a number past it. So "would +5 have saved me"
+    is meaningless here and the question becomes whether the hit is big enough
+    to be worth a slot -- which a monster answers by arithmetic and a player
+    answers for themselves.
+    """
+    from . import dmturn  # noqa: PLC0415 - circular at import time
+
+    who = target_name or "it"
+    if await dmturn.controlled(client, target_uuid):
+        if not await reaction.worth_it_against(client, target_uuid, amount):
+            return await _land(client, target_uuid, target_name, amount, out)
+        for line in await reaction.cast(client, target_uuid, who):
+            out.say(line)
+        return out.say(f"{spell_name} is stopped dead.")
+
+    mark = len(out.lines)
+
+    async def answered(accepted: bool) -> Outcome:
+        out.pending = None
+        if not accepted:
+            await _land(client, target_uuid, target_name, amount, out)
+        else:
+            for line in await reaction.cast(client, target_uuid, who):
+                out.say(line)
+            out.say(f"{spell_name} is stopped dead -- no damage.")
+        return Outcome(True, out.lines[mark:])
+
+    out.pending = Pending(
+        intent=intent, actor_uuid=target_uuid, target_uuid=target_uuid,
+        question=f"{who} can cast Shield to stop {spell_name}",
+        on_answer=answered,
+    )
+    return out.say(
+        f"{spell_name} would deal {amount} to {who}, and Shield stops it outright. "
+        f"Cast it as a reaction? Say yes or no."
+    )
+
+
+async def _offer_shield(
+    client, target_uuid: str, target_name: str | None, to_hit: int, armour_class: int,
+    intent: Intent, out: Outcome, resume,
+) -> Outcome:
+    """Ask, or decide, depending on whose creature it is.
+
+    A monster answers its own question -- `reaction.would_save` is already the
+    rule that makes casting worthwhile, so there is nothing left to weigh. A
+    player's character is asked, because spending a slot and a reaction to avoid
+    one hit is a real choice and it belongs to whoever is playing them.
+
+    Fires only when the roll is inside the +5 band, so the question is never
+    "would you like to waste a slot".
+    """
+    from . import dmturn  # noqa: PLC0415 - circular at import time
+
+    who = target_name or "it"
+    if await dmturn.controlled(client, target_uuid):
+        out.say(f"That would hit AC {armour_class}.")
+        for line in await reaction.cast(client, target_uuid, who):
+            out.say(line)
+        return out.say(f"{to_hit} now misses.")
+
+    # Only what happens *after* the answer. The resolution appends to the same
+    # Outcome the question was asked on, so returning it whole would read the
+    # attack out a second time -- and would still be carrying the Pending that
+    # was just resolved, leaving the console waiting on a question nobody asked.
+    mark = len(out.lines)
+
+    async def answered(accepted: bool) -> Outcome:
+        out.pending = None
+        if not accepted:
+            out.say(f"{who} takes it.")
+            await resume()
+        else:
+            for line in await reaction.cast(client, target_uuid, who):
+                out.say(line)
+            out.say(f"{to_hit} now misses AC {armour_class + reaction.SHIELD_AC}.")
+        return Outcome(True, out.lines[mark:])
+
+    out.pending = Pending(
+        intent=intent, actor_uuid=target_uuid, target_uuid=target_uuid,
+        question=f"{who} can cast Shield to turn that {to_hit} into a miss",
+        on_answer=answered,
+    )
+    return out.say(
+        f"That hits AC {armour_class} with a {to_hit}. {who} has Shield prepared -- "
+        f"cast it as a reaction and turn it into a miss? Say yes or no."
+    )
 
 
 async def _land(client, target_uuid: str, target_name: str | None, amount: int, out: Outcome) -> Outcome:
@@ -1222,10 +1675,18 @@ async def _do_measure(client, actor_uuid, target_uuid, actor_name, target_name) 
 
 
 async def _do_attack(
-    client, actor_uuid, target_uuid, actor_name, target_name, intent, as_player, prefix
+    client, actor_uuid, target_uuid, actor_name, target_name, intent, as_player, prefix,
+    *, costs_action: bool = True,
 ) -> Outcome:
     kind = (intent.kind or AttackKind.MELEE).value
     out = Outcome(True, list(prefix or []))
+
+    # Checked before anything is rolled, and spent only once the attack has
+    # actually resolved. Spending up front would eat the action of an attack
+    # that then turns out to be impossible; rolling first and refusing after
+    # would put a public dice toast on the board for a swing that never happened.
+    if costs_action and not await turns.has(client, actor_uuid, "action"):
+        return Outcome(False, [f"{actor_name} has already used its action this turn."])
 
     # Ranged attacks and spells need to see what they are shooting at. Melee
     # doesn't need the check -- you are standing next to it.
@@ -1252,8 +1713,25 @@ async def _do_attack(
     target_sheet = await sheet.read_sheet(client, target_uuid)
     armour_class = sheet.armour_class(target_sheet)
 
+    # Shooting with somebody's blade at your throat. The third consumer of the
+    # same "threatened" rule as Sneak Attack and opportunity attacks, and the
+    # reason that rule lives in one function.
+    bias = intent.bias
+    if intent.kind in (AttackKind.RANGED, AttackKind.CANTRIP):
+        field = await _build_field(client)
+        armed = await features.melee_armed(client, field.occupants)
+        menace = features.threatened_by(field, actor_uuid, await _sides(client), armed)
+        if menace is not None:
+            # Advantage and disadvantage cancel rather than stack, as 5e says.
+            bias = "normal" if bias == "advantage" else "disadvantage"
+            out.say(f"{menace} is in {actor_name}'s face, so the shot is at disadvantage.")
+
     rolls = await sheet.roll_attack(
-        client, actor_uuid, kind, bias=intent.bias, as_player=as_player or actor_name
+        client, actor_uuid, kind, bias=bias, as_player=as_player or actor_name,
+        # Damage waits until the attack is known to have landed. Everyone can
+        # see the dice log, and a damage die on a miss is a number the table is
+        # invited to read and then told to ignore.
+        defer_damage=True,
     )
     if rolls is None:
         return Outcome(False, [*(prefix or []), f"{actor_name} has no {kind} attack equipped."])
@@ -1265,31 +1743,83 @@ async def _do_attack(
         derived = ((await sheet.read_sheet(client, actor_uuid)) or {}).get("derived", {})
         cantrip = derived.get("cantrip") or {}
         dc, save = cantrip.get("saveDc"), (cantrip.get("save") or "").upper()
+        if costs_action:
+            await turns.spend(client, actor_uuid, "action")
         return out.say(
             f"{actor_name} casts {cantrip.get('name', 'a cantrip')} at {target_name}: "
             f"DC {dc} {save} save, {damage.total} damage on a failure."
         )
 
-    bias_note = "" if intent.bias == "normal" else f" with {intent.bias}"
+    bias_note = "" if bias == "normal" else f" with {bias}"
     natural = to_hit.counted[0] if to_hit.counted else 0
     out.say(f"{actor_name} attacks {target_name}{bias_note}: {to_hit.total} to hit {to_hit.long_result()}.")
+
+    if costs_action:
+        await turns.spend(client, actor_uuid, "action")
 
     if natural == 1:
         return out.say("A natural 1 -- it misses badly.")
 
     crit = natural == 20
     if armour_class is None:
+        # No AC to compare against, so the hit is the DM's call -- which means
+        # they need the number, and it is rolled here rather than earlier.
+        damage = await sheet.roll_damage(client, attack, as_player=as_player or actor_name)
         out.say(f"{target_name} has no armour class recorded, so that is the DM's call.")
         return out.say(f"Damage would be {damage.total}.")
 
     if not crit and to_hit.total < armour_class:
         return out.say(f"That misses AC {armour_class}.")
 
+    # A nat 20 hits whatever the armour class is, so Shield has nothing to
+    # argue with; only an ordinary hit inside the +5 band is worth offering.
+    if not crit and await reaction.would_save(client, target_uuid, to_hit.total, armour_class):
+        return await _offer_shield(
+            client, target_uuid, target_name, to_hit.total, armour_class, intent,
+            out, lambda: _land_weapon_hit(
+                client, actor_uuid, target_uuid, target_name, target_sheet,
+                attack, crit, as_player or actor_name, armour_class, out,
+            ),
+        )
+
+    return await _land_weapon_hit(
+        client, actor_uuid, target_uuid, target_name, target_sheet,
+        attack, crit, as_player or actor_name, armour_class, out,
+    )
+
+
+async def _land_weapon_hit(
+    client, actor_uuid, target_uuid, target_name, target_sheet,
+    attack, crit: bool, roller: str, armour_class: int, out: Outcome,
+) -> Outcome:
+    """Everything a landed weapon hit does, split out so Shield can interrupt.
+
+    Extracted rather than duplicated: the offer needs to be able to say "no" and
+    have the swing finish exactly as it would have, conditions and death saves
+    included, and a second copy of this would drift from the first.
+    """
+    damage = await sheet.roll_damage(client, attack, as_player=roller)
     total = damage.total
     if crit:
         # A critical doubles the dice, not the modifier.
-        extra = await client.roll_dice(damage.notation, share_with="none", as_player=as_player or actor_name)
+        extra = await client.roll_dice(damage.notation, share_with="none", as_player=roller)
         total += sum(extra.counted)
+
+    total += await _class_damage(
+        client, actor_uuid, target_uuid, attack, crit, roller, out,
+    )
+
+    # Resistance before the number is read out, not after. Announcing 10 and
+    # then applying 5 leaves the table with two figures and no idea which one
+    # the board used.
+    if await features.raging(client, target_uuid):
+        kind = await features.damage_type_of(client, attack)
+        halved = features.resisted(total, kind, True)
+        if halved != total:
+            out.say(f"{target_name} is raging: {total} {kind} halved to {halved}.")
+            total = halved
+
+    if crit:
         out.say(f"A nat 20: critically hit for {total} damage.")
     else:
         out.say(f"That hits AC {armour_class} for {total} damage.")

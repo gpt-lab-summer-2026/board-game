@@ -18,11 +18,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Awaitable, Callable
 
 from aiohttp import web
 
+from . import lore
 from . import nlguard
+from . import undo as undo_mod
 from .actions import Outcome, Pending, execute
 from .client import GhostClient
 from .sheet import read_sheet as sheet_read
@@ -246,6 +249,36 @@ setInterval(refresh, 4000);
 """
 
 
+# Bookkeeping verbs get no colour. A beat after "whose turn" is a non-sequitur,
+# and one after "targeting freak" delays the confirmation somebody is waiting on.
+# Commands that can change the board, and are therefore worth snapshotting
+# before they run. Everything else -- measuring, asking whose turn it is, the
+# story -- costs two DataBlock reads for nothing.
+_UNDOABLE = {
+    Action.ATTACK, Action.OPPORTUNITY, Action.CAST, Action.HEAL, Action.CONDITION,
+    Action.AC_MODIFIER, Action.USE_ITEM, Action.MOVE, Action.MOVE_DIR, Action.RETREAT,
+    Action.JUMP, Action.DASH, Action.CONTEST, Action.DEATH_SAVE,
+}
+
+_UNCOLOURED = {
+    Action.HELP,
+    Action.WHOSE_TURN,
+    Action.TARGET,
+    Action.CLEAR_TARGET,
+    Action.PROLOGUE,
+    Action.STORY_RESET,
+    Action.CONFIRM,
+    Action.CANCEL,
+    Action.NEXT_TURN,
+    Action.PREV_TURN,
+    Action.RESUME,
+    Action.SET_ROUND,
+    Action.ROLL_INITIATIVE,
+    Action.CLEAR_INITIATIVE,
+    Action.END_COMBAT,
+}
+
+
 class Console:
     def __init__(
         self,
@@ -264,6 +297,18 @@ class Console:
         # An action held back on a yes/no. Single-slot on purpose: a queue
         # of pending questions is a way to answer the wrong one.
         self._pending: Pending | None = None
+        # Who the party is aiming at, so "i cast ice knife" does not have to say
+        # it again. Cleared when the turn moves on -- a target is a within-turn
+        # convenience, and a stale one silently sending a spell at the wrong
+        # creature is exactly the failure the name guard exists to prevent.
+        self._focus: str | None = None
+        # Whose turn it was when the focus was set, so it can be dropped when
+        # the turn moves regardless of *how* it moved -- the browser advancing
+        # it never reaches this process as a command.
+        self._focus_turn: str | None = None
+        # One step, not a stack: "undo undo undo" as a way of rewinding a fight
+        # is a different feature with different failure modes.
+        self._undo: undo_mod.Snapshot | None = None
         self.log: list[dict] = []
         self._seq = 0
         # Strong references to in-flight narration tasks. asyncio only holds a
@@ -272,6 +317,17 @@ class Console:
         self._speaking: set[asyncio.Task] = set()
         # Let the client push its own observations into this log.
         client.on_narration = self._note
+        # The ghost runs everything the players do not. Set here rather than in
+        # the client so the monster's command goes through `handle` and picks up
+        # the narration, the story beats, the action economy and the undo
+        # snapshot exactly as a spoken one would.
+        client.after_turn = self._schedule_monster_turn
+        self.dm_auto = os.getenv("GHOST_DM_AUTO", "1").strip().lower() not in {"0", "false", "no"}
+        self._dm_busy = False
+        # Strong references, for the reason the narration set exists: asyncio
+        # only holds a weak one, and a collected task is a monster that stood
+        # there doing nothing for no visible reason.
+        self._monster_turns: set[asyncio.Task] = set()
 
     def _active_name(self) -> str | None:
         """Whose turn it is, or None when nobody is in initiative.
@@ -324,11 +380,68 @@ class Console:
         # locally and sailed straight past. Same request, opposite answers,
         # depending on nothing the player could see -- which is how it came to
         # look like the elf was stuck.
-        clash = nlguard.wrong_turn(
-            intent.action.value, intent.actor, self._active_name(),
-        )
+        active = self._active_name()
+
+        # A standing target belongs to the turn it was set in. Checked against
+        # the live active character rather than cleared by the `next turn`
+        # command, because the DM clicking the turn bar never reaches this
+        # process -- and a focus that outlived its turn would silently aim the
+        # next spell at last round's enemy.
+        if self._focus is not None and active != self._focus_turn:
+            self._focus = None
+            self._focus_turn = None
+
+        clash = nlguard.wrong_turn(intent.action.value, intent.actor, active)
         if clash:
             return self._record(text, source, intent, Outcome(False, [clash]))
+
+        if intent.action is Action.RESUME:
+            return self._record(text, source, intent, await self._resume())
+
+        if intent.action is Action.DM_AUTO:
+            self.dm_auto = intent.condition_on
+            return self._record(
+                text, source, intent,
+                Outcome(True, [
+                    "The ghost is running the monsters." if self.dm_auto
+                    else "The monsters are yours to run."
+                ]),
+            )
+
+        if intent.action is Action.UNDO:
+            held_undo, self._undo = self._undo, None
+            if held_undo is None:
+                return self._record(
+                    text, source, intent,
+                    Outcome(False, ["There is nothing to undo."]),
+                )
+            return self._record(
+                text, source, intent,
+                Outcome(True, await undo_mod.restore(self.client, held_undo)),
+            )
+
+        if intent.action is Action.TARGET:
+            found = self.client.state.find_shape(intent.target or "")
+            if found is None:
+                return self._record(
+                    text, source, intent,
+                    Outcome(False, [f"I can't find anyone called {intent.target!r}."]),
+                )
+            from . import initiative  # noqa: PLC0415 - circular at import time
+
+            self._focus = initiative._name(self.client, found)
+            self._focus_turn = active
+            return self._record(
+                text, source, intent,
+                Outcome(True, [f"Targeting {self._focus}. Say 'clear target' to stop."]),
+            )
+
+        if intent.action is Action.CLEAR_TARGET:
+            was, self._focus = self._focus, None
+            return self._record(
+                text, source, intent,
+                Outcome(True, [f"No longer targeting {was}." if was else "There was no target set."]),
+            )
 
         # A yes/no only means something while a question is open, and it
         # answers *that* question -- it is never a command in its own right.
@@ -342,6 +455,18 @@ class Console:
             # marker. A highlight left behind outlives the thing it was asking
             # about and turns into scenery nobody can account for.
             await self._clear_markers(held)
+
+            # A question that carries its own resolution answers *both* ways
+            # through the same closure: a Shield offer declined still has an
+            # attack to finish landing, so "no" is not "do nothing" here.
+            if held.on_answer is not None:
+                outcome = await held.on_answer(intent.action is Action.CONFIRM)
+                self._pending = outcome.pending
+                if self.narrator is not None and outcome.lines:
+                    task = asyncio.create_task(self._narrate(outcome.text))
+                    self._speaking.add(task)
+                    task.add_done_callback(self._speaking.discard)
+                return self._record(text, source, held.intent, outcome)
 
             if intent.action is Action.CANCEL:
                 return self._record(
@@ -367,13 +492,56 @@ class Console:
                 Outcome(False, ["Lost the connection to PlanarAlly and could not get it back."]),
             )
 
+        # Snapshot before, not after: the point is the state the command is
+        # about to replace. Taken even when the command goes on to fail, because
+        # a partially applied failure -- a slot spent before the target turned
+        # out to be missing -- is exactly the case worth being able to take back.
+        if intent.action in _UNDOABLE:
+            subjects = [
+                self.client.state.find_shape(n or "")
+                for n in (intent.actor, intent.target or self._focus)
+            ]
+            self._undo = await undo_mod.capture(
+                self.client, [u for u in subjects if u], intent.raw or text
+            )
+
         try:
-            outcome = await execute(self.client, intent, accept_hazard=accept)
+            outcome = await execute(
+                self.client, intent, accept_hazard=accept, focus=self._focus
+            )
         except Exception as e:  # noqa: BLE001 - a bad command must not kill the console
             log.exception("command failed")
             return self._record(text, source, intent, Outcome(False, [f"That went wrong: {e}"]))
 
         self._pending = outcome.pending
+
+        # Ending a turn hands the whole enemy stretch to the ghost at once. The
+        # table has one human running the party and nobody running the hostiles,
+        # so "end turn" should not stop on the first goblin -- it plays every
+        # monster in a row and comes to rest on the next party member, which is
+        # the moment the human needs to act. Only when the ghost is running the
+        # monsters, and only if the next creature actually is one.
+        if intent.action is Action.NEXT_TURN and self.dm_auto and not self._dm_busy:
+            from . import dmturn  # noqa: PLC0415 - circular at import time
+
+            if await dmturn.controlled(self.client, self.client.state.initiative.current):
+                chain = await self._resume()
+                outcome.lines.extend(chain.lines)
+                outcome.pending = outcome.pending or chain.pending
+                self._pending = outcome.pending
+
+        # A line of character colour, at most one every few commands and only
+        # when something actually happened. Appended to the outcome rather than
+        # narrated separately so it arrives in the same breath as the result --
+        # a beat spoken on its own sounds like the ghost changing the subject.
+        if outcome.ok and intent.action not in _UNCOLOURED:
+            try:
+                colour = await lore.beat(self.client, intent.actor, intent.action.value)
+            except Exception:  # noqa: BLE001 - never fail a command for flavour
+                log.exception("could not pick a story beat")
+                colour = None
+            if colour:
+                outcome.say(colour)
 
         if self.narrator is not None and outcome.lines:
             # Fire and forget. Awaiting this held the HTTP response open until
@@ -597,6 +765,96 @@ class Console:
             self.log[-1]["lines"] = list(outcome.lines)
             self.log[-1]["command"] = said
         return outcome
+
+    async def _schedule_monster_turn(self) -> None:
+        """Run the monster's turn detached from whatever advanced the turn.
+
+        Two reasons, both learned the hard way. The hook fires *inside* the
+        `next turn` command, so doing the work inline logged the monster's
+        action before the turn change that caused it -- the panel read as though
+        the goblin had acted early. And it held the HTTP response open for the
+        cluster round trip, which is the same mistake narration made: the voice
+        loop cannot start listening again while a request is still open.
+        """
+        task = asyncio.create_task(self._take_monster_turn())
+        self._monster_turns.add(task)
+        task.add_done_callback(self._monster_turns.discard)
+
+    async def _take_monster_turn(self) -> None:
+        """If the creature now up is not a player's, play it.
+
+        Guarded against re-entry: a monster's command can advance the turn
+        itself, and without the flag a party of six goblins would recurse
+        through the whole round in one call stack.
+        """
+        from . import dmturn  # noqa: PLC0415 - circular at import time
+
+        if not self.dm_auto or self._dm_busy:
+            return
+        active = self.client.state.initiative.current
+        if not await dmturn.controlled(self.client, active):
+            return
+
+        self._dm_busy = True
+        try:
+            await asyncio.sleep(0)
+            name = dmturn._name_of(self.client, active) or "it"
+            choices = await dmturn.options(self.client, active)
+            command, why = await dmturn.choose(self.client, active, choices)
+            if command is None:
+                await self._note(f"{name} does nothing -- {why}.")
+                return
+            log.info("dm turn: %s (%s of %d options, %s)", command, why, len(choices), name)
+            await self.handle(command, "dm")
+        except Exception:  # noqa: BLE001
+            log.exception("could not take a monster turn")
+        finally:
+            self._dm_busy = False
+
+    async def _resume(self) -> "Outcome":
+        """Play every monster turn from here until it is a player's, then stop.
+
+        The table has one human running the party and nobody running the
+        hostiles, so “resume” hands the ghost the whole stretch of enemy turns in
+        one go. It plays each creature the ghost controls, advances the tracker,
+        and repeats -- stopping the instant a player character (or nobody) is up,
+        which is the moment the human needs to act.
+
+        Bounded to two rounds of turns so a table that is somehow all-monster
+        cannot spin forever; in practice it stops at the first party member.
+        """
+        from . import dmturn, initiative  # noqa: PLC0415 - circular at import time
+
+        init = self.client.state.initiative
+        if not init.order or not init.is_active:
+            return Outcome(True, ["Combat isn't running, so there's nothing to resume."])
+
+        # Block the turn-change hook for the duration: the ghost does not hear
+        # its own advances, but a stray one must not double-drive a creature.
+        self._dm_busy = True
+        lines: list[str] = []
+        try:
+            for _ in range(2 * max(1, len(init.order))):
+                active = init.current
+                if not await dmturn.controlled(self.client, active):
+                    who = dmturn._name_of(self.client, active) or "your character"
+                    lines.append(f"Over to you — it's {who}'s turn.")
+                    break
+                name = dmturn._name_of(self.client, active) or "it"
+                choices = await dmturn.options(self.client, active)
+                command, why = await dmturn.choose(self.client, active, choices)
+                if command is None:
+                    lines.append(f"{name} does nothing — {why}.")
+                else:
+                    log.info("resume: %s (%s)", command, name)
+                    outcome = await self.handle(command, "dm")
+                    lines.extend(outcome.lines)
+                lines.extend(await initiative.advance(self.client, forward=True))
+            else:
+                lines.append("Stopped after two rounds — nobody on the party's side is up.")
+        finally:
+            self._dm_busy = False
+        return Outcome(True, lines)
 
     async def _note(self, text: str) -> None:
         """Log something the ghost noticed rather than something it was told.

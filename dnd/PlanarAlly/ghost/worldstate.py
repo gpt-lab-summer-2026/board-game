@@ -68,6 +68,16 @@ async def snapshot(client: GhostClient) -> dict[str, Any]:
         entry["distance_ft"] = dists
         entry["sight"] = sight
 
+    # Rage is not a catalogue condition, so it has to be added to the column by
+    # hand -- and it must be, or the model running the monsters cannot see that
+    # the barbarian is already raging and will spend a bonus action doing it
+    # again.
+    from . import features  # noqa: PLC0415 - circular at import time
+
+    for name, entry in people.items():
+        if await features.raging(client, entry["uuid"]):
+            entry["conditions"] = [*entry.get("conditions", []), "raging"]
+
     active = budget.get("active")
     return {
         "grid": {"type": field.grid.name, "feet_per_cell": field.unit_size},

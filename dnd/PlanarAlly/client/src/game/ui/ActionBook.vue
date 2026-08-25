@@ -16,6 +16,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { selectedState } from "../systems/selected/state";
 import { propertiesState } from "../systems/properties/state";
+import { initiativeStore } from "./initiative/state";
 
 interface Entry {
     label: string;
@@ -78,7 +79,11 @@ function onDragStart(event: PointerEvent): void {
     const box = rootEl.value?.getBoundingClientRect();
     if (box === undefined) return;
     dragFrom = { x: event.clientX, y: event.clientY, left: box.left, top: box.top };
-    (event.target as HTMLElement).setPointerCapture(event.pointerId);
+    // currentTarget (the header), not target (whichever span was under the
+    // cursor). Capturing on a child means the capture is lost if that child
+    // re-renders mid-drag -- and `who` re-renders whenever the selected token
+    // changes, which a drag across the board can cause.
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     event.preventDefault();
 }
 
@@ -115,11 +120,46 @@ const target = ref("");
 const busy = ref(false);
 const lastResult = ref<string[]>([]);
 
-/** The first selected token's name, which is what the list is built for. */
+/** The first selected token's name. */
 const selectedName = computed(() => {
     const id = [...selectedState.reactive.selected][0];
     if (id === undefined) return null;
     return propertiesState.reactive.data.get(id)?.name ?? null;
+});
+
+/**
+ * Whoever's turn it is.
+ *
+ * Indexed into `locationData` rather than a visibility-filtered copy: the turn
+ * counter the server keeps is an index into the full order, so filtering first
+ * and then indexing would point at the wrong creature for anyone who cannot see
+ * every combatant.
+ */
+const activeName = computed(() => {
+    const actor = initiativeStore.state.locationData[initiativeStore.state.turnCounter];
+    if (actor?.localId === undefined) return null;
+    return propertiesState.reactive.data.get(actor.localId)?.name ?? null;
+});
+
+/**
+ * What the panel is showing actions for: whichever the table indicated most
+ * recently.
+ *
+ * Following the selection alone meant the panel sat on whatever token was last
+ * clicked, which for a group playing by voice is "whatever the DM touched an
+ * hour ago" -- so it was showing the wrong character's spells for most of the
+ * session. Following the turn alone would be worse in the other direction: a DM
+ * checking a monster's sheet mid-combat would have it snatched away.
+ *
+ * So both write to it, last one wins. The turn advancing moves the panel on;
+ * clicking a token overrides until the turn moves again.
+ */
+const subject = ref<string | null>(selectedName.value ?? activeName.value);
+watch(selectedName, (name) => {
+    subject.value = name ?? activeName.value;
+});
+watch(activeName, (name) => {
+    if (name !== null) subject.value = name;
 });
 
 async function refresh(name: string | null): Promise<void> {
@@ -137,7 +177,7 @@ async function refresh(name: string | null): Promise<void> {
     }
 }
 
-watch(selectedName, (name) => void refresh(name), { immediate: true });
+watch(subject, (name) => void refresh(name), { immediate: true });
 
 function needsMissingTarget(entry: Entry): boolean {
     return entry.needsTarget && target.value.trim() === "";
@@ -178,7 +218,7 @@ async function run(entry: Entry): Promise<void> {
                 @pointercancel="onDragEnd"
             >
                 <span class="grip" title="Drag to move">⠿</span>
-                <span class="who">{{ character ?? "Select a token" }}</span>
+                <span class="who">{{ character ?? "Nobody's turn" }}</span>
                 <button
                     v-if="pos !== null"
                     class="reset"
@@ -229,6 +269,14 @@ async function run(entry: Entry): Promise<void> {
     top: 6rem;
     left: 0;
     z-index: 19;
+
+    // #ui is pointer-events: none -- the whole overlay is click-through by
+    // design, and every panel that wants clicks turns them back on for itself
+    // (LayerPanel, TurnOrderBar and FactionPanel all do). This one did not, so
+    // nothing in it was ever clickable: the drag handle never saw a pointerdown
+    // and every click fell through to the board, which is what was opening
+    // PlanarAlly's own menu "behind" the panel.
+    pointer-events: auto;
 
     // Once dragged it is positioned explicitly, and the rounded left edge that
     // made sense against the window edge no longer does.
