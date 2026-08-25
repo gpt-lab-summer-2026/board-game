@@ -1,5 +1,3 @@
-
-import os
 import cv2
 import numpy as np
 import pytesseract
@@ -82,7 +80,7 @@ def detect_text(frame):
     canny = cv2.Canny(blurred, 50 ,150)
     morph = cv2.morphologyEx(canny, cv2.MORPH_CLOSE, np.ones((5,5),np.uint8))
     cv2.imshow(WINDOW_NAME, morph)
-    cv2.waitKey(2000)
+    cv2.waitKey(1000)
 
     # Find contours
     contours, _ = cv2.findContours(morph.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -98,7 +96,7 @@ def detect_text(frame):
 
     cv2.drawContours(display, [approx], -1, (0, 255, 0), 3)
     cv2.imshow(WINDOW_NAME, display)
-    cv2.waitKey(2000)
+    cv2.waitKey(1000)
     # processing card for text detection
     card = four_point_transform(frame, approx.reshape(4, 2))
     cropped = crop_card_footer(card)
