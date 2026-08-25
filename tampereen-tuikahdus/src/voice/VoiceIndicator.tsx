@@ -17,18 +17,37 @@ function describe({ connected, voiceStatus }: VoiceControlStatus): string {
         : 'recording...';
     case 'transcribing':
       return 'transcribing...';
-    case 'listening_for_followup':
-      return voiceStatus.player
-        ? `still listening to ${voiceStatus.player} -- no need to say "hey jarvis" again yet`
-        : 'still listening...';
   }
 }
 
-function VoiceIndicator({ voice }: { voice: VoiceControlStatus }) {
+/**
+ * `thinking` is App.tsx's own llmPending, not part of the hook's status --
+ * every kind of voice classification (setup, roll/continue/pay-wait-skip,
+ * and moves) shares that one flag, so surfacing it here shows "thinking" for
+ * all of them instead of only the move-resolution path that used to be the
+ * only place it was visible.
+ */
+function VoiceIndicator({
+  voice,
+  thinking,
+}: {
+  voice: VoiceControlStatus;
+  thinking: boolean;
+}) {
   return (
-    <p className={`voice-indicator ${voice.connected ? 'connected' : 'disconnected'}`}>
-      🎤 Voice: {describe(voice)}
-    </p>
+    <div className={`voice-indicator ${voice.connected ? 'connected' : 'disconnected'}`}>
+      <p className='voice-indicator-status'>
+        🎤 Voice: {describe(voice)}
+      </p>
+      {voice.lastTranscript && (
+        <p className='voice-indicator-heard'>
+          Heard: “{voice.lastTranscript}”
+        </p>
+      )}
+      {thinking && (
+        <p className='voice-indicator-thinking'>🤔 Thinking…</p>
+      )}
+    </div>
   );
 }
 

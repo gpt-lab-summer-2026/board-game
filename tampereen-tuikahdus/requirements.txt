@@ -2,8 +2,9 @@ numpy
 scipy
 requests
 torch
+sounddevice
+silero-vad
 openwakeword
 faster-whisper
-pyannote.audio
 kokoro-onnx
 websockets

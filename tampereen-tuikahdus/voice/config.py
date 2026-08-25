@@ -1,4 +1,4 @@
-"""Config objects for the wake-word + speaker-ID turn-gating harness."""
+"""Config objects for the wake-word + turn-gating harness."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,10 +8,12 @@ from dataclasses import dataclass
 class AudioConfig:
     capture_rate: int = 48000      # the mic's native rate -- requesting 16k directly from ALSA
                                     # is unreliable on hardware that doesn't support it natively
-    sample_rate: int = 16000       # what openWakeWord and pyannote both expect; audio.resample
-                                    # converts every captured chunk down to this before it's used
+    sample_rate: int = 16000       # what openWakeWord and silero-vad both expect; audio.resample
+                                    # converts every captured block down to this before it's used
     channels: int = 1
-    mac_input_device: str = "3"
+    # sounddevice's input device index, or None for the system default. List
+    # actual devices/indices with: python -m sounddevice
+    input_device: int | None = 0
 
 
 @dataclass
@@ -22,10 +24,17 @@ class WakeWordConfig:
 
 
 @dataclass
-class SpeakerIdConfig:
-    device: str = "cpu"
-    hf_token: object = None
-    match_threshold: float = 0.5       # cosine similarity below this = "unrecognized voice"
+class VadConfig:
+    """Governs when a command recording ends -- by detected silence, not a fixed
+    duration, so a short "roll" and a long "roll the dice and move to X" both feel
+    natural instead of the mic always waiting out the same fixed window either way.
+    """
+    threshold: float = 0.5           # min speech probability (0-1) silero-vad requires
+    silence_stop_seconds: float = 1.2  # trailing silence needed to end the turn
+    analysis_window_seconds: float = 3.0  # only this much recent audio is re-scored per poll
+    wait_seconds: float = 10.0       # give up if nothing is said after the wake word
+    max_seconds: float = 30.0        # hard cap so a stuck VAD cannot record forever
+    poll_seconds: float = 0.5        # how often the recording loop re-checks accumulated audio
 
 
 @dataclass

@@ -26,17 +26,50 @@
 
 .voice-indicator {
   font-size: 0.95em;
-  font-style: italic;
   padding: 0.4rem 0.6rem;
   border-radius: 0.4rem;
   background: #f0f4ff;
   border: 1px solid #d0d8f0;
 }
 
+.voice-indicator p {
+  margin: 0;
+}
+
+.voice-indicator p + p {
+  margin-top: 0.3rem;
+}
+
 .voice-indicator.disconnected {
   color: #999;
   background: #f2f2f2;
   border-color: #ddd;
+}
+
+.voice-indicator-status {
+  font-style: italic;
+}
+
+.voice-indicator-heard {
+  font-weight: 600;
+}
+
+/* Deliberately louder than the rest of the box -- an LLM call takes several
+   seconds on this hardware, and a player who can't tell it's still working
+   (vs. having missed them) tends to just repeat themselves over it. */
+.voice-indicator-thinking {
+  font-weight: 700;
+  color: #7a4b00;
+  background: #fff3cd;
+  border: 1px solid #f0c94d;
+  border-radius: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  animation: voice-thinking-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes voice-thinking-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
 
 .revealed-card {

@@ -7,6 +7,7 @@ silero-vad
 openwakeword
 llama-cpp-python
 requests
+dotenv
 # torch 2.9+ declares NVIDIA CUDA deps unconditionally on aarch64 (~3GB of
 # wheels that do nothing on a Pi). 2.8.0 is CPU-only and is what already
 # worked in board-game-old/.venv.

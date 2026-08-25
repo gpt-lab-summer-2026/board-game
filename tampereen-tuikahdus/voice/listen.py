@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
-import signal
-import subprocess
-import tempfile
+import queue
 import threading
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,10 +10,11 @@ from math import gcd
 from urllib.parse import urlsplit
 
 import numpy as np
+import sounddevice as sd
 import websockets
 from websockets.sync.server import serve as ws_serve
 
-from .config import AudioConfig, SttConfig, WakeWordConfig
+from .config import AudioConfig, SttConfig, VadConfig, WakeWordConfig
 
 log = logging.getLogger(__name__)
 
@@ -24,111 +22,60 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Microphone capture
 # ---------------------------------------------------------------------------
+# sounddevice keeps one real PortAudio stream open for the entire run, fed by
+# a callback into a queue -- not a subprocess spawned per phase. That's what
+# makes wake-word detection and command recording share the same live audio
+# with no gap between them: there's no process to spin up or tear down at the
+# handoff, just the next block already sitting in the queue.
 
 class AudioCapture:
     def __init__(self, cfg: AudioConfig):
         self.cfg = cfg
-        self._backend = "pw-record" if shutil.which("pw-record") else "ffmpeg"
-        if self._backend == "ffmpeg":
-            log.info("pw-record not found; capturing via ffmpeg (avfoundation) instead")
-
-    def record_seconds(self, seconds: float) -> np.ndarray:
-        log.info("Recording %.1fs at %d Hz...", seconds, self.cfg.capture_rate)
-        if self._backend == "ffmpeg":
-            return self._record_seconds_ffmpeg(seconds)
-        return self._record_seconds_pw(seconds)
-
-    def _record_seconds_pw(self, seconds: float) -> np.ndarray:
-        with tempfile.NamedTemporaryFile(suffix=".wav") as f:
-            proc = subprocess.Popen(
-                ["pw-record", "--rate", str(self.cfg.capture_rate),
-                 "--channels", str(self.cfg.channels), f.name],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-            try:
-                proc.wait(timeout=seconds)  # pw-record never exits on its own, so this always
-            except subprocess.TimeoutExpired:  # times out -- that's the normal path, not an error
-                # pw-record only flushes a valid WAV header/footer on SIGINT, not SIGTERM/kill.
-                proc.send_signal(signal.SIGINT)
-                proc.wait(timeout=5)
-            with wave.open(f.name, "rb") as wav:
-                raw = wav.readframes(wav.getnframes())
-        audio = np.frombuffer(raw, dtype="int16").astype("float32") / 32768.0
-        return resample(audio, self.cfg.capture_rate, self.cfg.sample_rate)
-
-    def _record_seconds_ffmpeg(self, seconds: float) -> np.ndarray:
-        # Unlike pw-record, ffmpeg exits on its own once -t elapses -- no SIGINT dance
-        # needed to get a valid WAV footer.
-        with tempfile.NamedTemporaryFile(suffix=".wav") as f:
-            subprocess.run(
-                ["ffmpeg", "-y", "-nostdin", "-loglevel", "error",
-                 "-f", "avfoundation", "-i", f":{self.cfg.mac_input_device}",
-                 "-t", str(seconds),
-                 "-ar", str(self.cfg.capture_rate), "-ac", str(self.cfg.channels),
-                 f.name],
-                check=True,
-            )
-            with wave.open(f.name, "rb") as wav:
-                raw = wav.readframes(wav.getnframes())
-        audio = np.frombuffer(raw, dtype="int16").astype("float32") / 32768.0
-        return resample(audio, self.cfg.capture_rate, self.cfg.sample_rate)
-
-    def stream_16k_chunks(self, chunk_samples: int = 1280):
-
-        if self._backend == "ffmpeg":
-            yield from self._stream_ffmpeg(chunk_samples)
-        else:
-            yield from self._stream_pw(chunk_samples)
-
-    def _stream_pw(self, chunk_samples: int):
-        native_chunk = chunk_samples * self.cfg.capture_rate // self.cfg.sample_rate
-        bytes_per_chunk = native_chunk * 2  # s16 = 2 bytes/sample, mono
-        proc = subprocess.Popen(
-            ["pw-record", "--rate", str(self.cfg.capture_rate), "--channels", str(self.cfg.channels),
-             "--format", "s16", "-a", "-"],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        self._queue: queue.Queue = queue.Queue()
+        self._stream = sd.InputStream(
+            samplerate=cfg.capture_rate,
+            channels=cfg.channels,
+            dtype="int16",
+            device=cfg.input_device,
+            blocksize=cfg.capture_rate // 10,  # 100ms blocks; large enough to survive a stall
+            latency="high",
+            callback=self._on_audio,
         )
-        try:
-            while True:
-                raw = proc.stdout.read(bytes_per_chunk)
-                if len(raw) < bytes_per_chunk:
-                    log.warning("pw-record stream ended unexpectedly")
-                    break
-                native = np.frombuffer(raw, dtype="int16").astype("float32") / 32768.0
-                chunk = resample(native, self.cfg.capture_rate, self.cfg.sample_rate)
-                yield (np.clip(chunk, -1.0, 1.0) * 32767).astype("int16")
-        finally:
-            proc.terminate()
-            proc.wait(timeout=5)
+        self._stream.start()
+        log.info("Capturing via sounddevice (device=%r, %d Hz -> %d Hz)",
+                  cfg.input_device, cfg.capture_rate, cfg.sample_rate)
 
-    def _stream_ffmpeg(self, chunk_samples: int):
-        native_chunk = chunk_samples * self.cfg.capture_rate // self.cfg.sample_rate
-        bytes_per_chunk = native_chunk * 2  # s16 = 2 bytes/sample, mono
-        proc = subprocess.Popen(
-            ["ffmpeg", "-nostdin", "-loglevel", "error",
-             "-f", "avfoundation", "-i", f":{self.cfg.mac_input_device}",
-             "-ar", str(self.cfg.capture_rate), "-ac", str(self.cfg.channels),
-             "-f", "s16le", "-"],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-        )
-        try:
-            while True:
-                raw = proc.stdout.read(bytes_per_chunk)
-                if len(raw) < bytes_per_chunk:
-                    log.warning("ffmpeg stream ended unexpectedly")
-                    break
-                native = np.frombuffer(raw, dtype="int16").astype("float32") / 32768.0
-                chunk = resample(native, self.cfg.capture_rate, self.cfg.sample_rate)
-                yield (np.clip(chunk, -1.0, 1.0) * 32767).astype("int16")
-        finally:
-            # Unlike pw-record, ffmpeg reading an avfoundation session doesn't reliably
-            # exit on SIGTERM alone -- observed hanging past a 5s wait in testing.
-            proc.terminate()
+    def _on_audio(self, indata, _frames, _time_info, status) -> None:
+        # "input overflow" here means PortAudio dropped blocks because nothing drained
+        # the queue in time -- keep this callback trivial, all analysis belongs in the
+        # polling loops below, not in the audio thread.
+        if status:
+            log.warning("audio input status: %s", status)
+        self._queue.put(indata.copy().reshape(-1))
+
+    def drain_native(self) -> np.ndarray:
+        """Everything captured since the last drain, at cfg.capture_rate, int16."""
+        blocks = []
+        while True:
             try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=5)
+                blocks.append(self._queue.get_nowait())
+            except queue.Empty:
+                break
+        if not blocks:
+            return np.zeros(0, dtype="int16")
+        return np.concatenate(blocks)
+
+    def drain(self) -> np.ndarray:
+        """Everything captured since the last drain, resampled to cfg.sample_rate,
+        float32 in [-1, 1] -- what openWakeWord, silero-vad and whisper all want."""
+        native = self.drain_native().astype("float32") / 32768.0
+        if len(native) == 0:
+            return native
+        return resample(native, self.cfg.capture_rate, self.cfg.sample_rate)
+
+    def close(self) -> None:
+        self._stream.stop()
+        self._stream.close()
 
 
 def resample(samples: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
@@ -142,14 +89,55 @@ def resample(samples: np.ndarray, orig_sr: int, target_sr: int) -> np.ndarray:
     return resample_poly(samples, up, down).astype("float32")
 
 
+def to_int16(samples: np.ndarray) -> np.ndarray:
+    return (np.clip(samples, -1.0, 1.0) * 32767).astype("int16")
+
+
 def save_wav(path: str, samples: np.ndarray, sample_rate: int) -> None:
     """Write float32 [-1, 1] mono samples as 16-bit PCM, stdlib-only (no soundfile dependency)."""
-    pcm16 = (np.clip(samples, -1.0, 1.0) * 32767).astype("int16")
     with wave.open(path, "wb") as f:
         f.setnchannels(1)
         f.setsampwidth(2)
         f.setframerate(sample_rate)
-        f.writeframes(pcm16.tobytes())
+        f.writeframes(to_int16(samples).tobytes())
+
+
+class RollingWindow:
+    """A rolling view of resampled 16 kHz audio, trimmed to the last
+    `window_seconds` so re-scoring cost per poll stays constant instead of
+    growing with how long a turn has been going. Sample counts (start/elapsed)
+    stay absolute across trims via `trimmed`, so a caller can compare VAD
+    timestamps across polls even after old audio has scrolled out of the window.
+    Pass keep_all=True to also retain the complete, untrimmed history (e.g. for
+    the final transcription, which needs everything, not just the recent tail).
+    """
+
+    def __init__(self, sample_rate: int, window_seconds: float, keep_all: bool = False):
+        self.sample_rate = sample_rate
+        self.max_samples = int(window_seconds * sample_rate)
+        self.audio = np.zeros(0, dtype="float32")
+        self.trimmed = 0
+        self.all_audio = np.zeros(0, dtype="float32") if keep_all else None
+
+    def add(self, fresh: np.ndarray) -> None:
+        if len(fresh) == 0:
+            return
+        if self.all_audio is not None:
+            self.all_audio = np.concatenate((self.all_audio, fresh))
+        self.audio = np.concatenate((self.audio, fresh))
+        excess = len(self.audio) - self.max_samples
+        if excess > 0:
+            self.audio = self.audio[excess:]
+            self.trimmed += excess
+
+    @property
+    def start(self) -> float:
+        """Seconds from the beginning of the window's life to the start of its current view."""
+        return self.trimmed / self.sample_rate
+
+    @property
+    def elapsed(self) -> float:
+        return (self.trimmed + len(self.audio)) / self.sample_rate
 
 
 # ---------------------------------------------------------------------------
@@ -200,9 +188,11 @@ class WakeWordDetector:
             ) from e
         self._model_name = next(iter(self._model.models))
         self._armed = True  # fires once per rise above threshold, not once per frame while held
-        self.last_score = 0.0  # updated on every process_chunk call -- see test_wakeword.py
+        self.last_score = 0.0  # updated on every process_chunk call
+        self._pending = np.zeros(0, dtype="int16")  # feed()'s leftover, not yet a full frame
 
     def process_chunk(self, chunk: np.ndarray) -> WakeWordEvent | None:
+        """chunk: exactly CHUNK_SAMPLES int16 samples at 16 kHz."""
         score = float(self._model.predict(chunk)[self._model_name])
         self.last_score = score
         detected = score >= self.cfg.threshold
@@ -210,15 +200,80 @@ class WakeWordDetector:
         self._armed = not detected
         return WakeWordEvent(self._model_name, score) if fire else None
 
+    def feed(self, audio: np.ndarray) -> WakeWordEvent | None:
+        """audio: float32 [-1, 1] at 16 kHz, any length -- buffers into fixed-size
+        frames internally so callers can just hand over whatever a drain() returned."""
+        self._pending = np.concatenate((self._pending, to_int16(audio)))
+        while len(self._pending) >= CHUNK_SAMPLES:
+            frame, self._pending = self._pending[:CHUNK_SAMPLES], self._pending[CHUNK_SAMPLES:]
+            event = self.process_chunk(frame)
+            if event is not None:
+                return event
+        return None
 
-def wait_for_wake_word(capture: AudioCapture, detector: WakeWordDetector, rolling) -> np.ndarray:
 
-    for chunk in capture.stream_16k_chunks(CHUNK_SAMPLES):
-        rolling.append(chunk)
-        event = detector.process_chunk(chunk)
-        if event is None:
-            continue
-        return np.concatenate(list(rolling))
+def wait_for_wake_word(capture: AudioCapture, detector: WakeWordDetector,
+                        poll_seconds: float = 0.1) -> None:
+    while True:
+        if detector.feed(capture.drain()) is not None:
+            return
+        sd.sleep(int(poll_seconds * 1000))
+
+
+# ---------------------------------------------------------------------------
+# Voice activity detection -- decides when a command recording ends
+# ---------------------------------------------------------------------------
+
+class VoiceActivityDetector:
+    def __init__(self):
+        from silero_vad import load_silero_vad  # lazy: heavy dependency (torch)
+
+        self._model = load_silero_vad()
+
+    def speech_timestamps(self, audio: np.ndarray, sample_rate: int,
+                           threshold: float) -> list[dict]:
+        """Speech (start, end) timestamps in seconds for float32 mono audio in memory."""
+        import torch
+        from silero_vad import get_speech_timestamps
+
+        if len(audio) < 512:
+            return []
+        return get_speech_timestamps(
+            torch.from_numpy(np.ascontiguousarray(audio)),
+            self._model, threshold=threshold, sampling_rate=sample_rate,
+            return_seconds=True,
+        )
+
+
+def record_until_silence(capture: AudioCapture, vad: VoiceActivityDetector,
+                          cfg: VadConfig, sample_rate: int = 16000) -> np.ndarray:
+    """Record from right after the wake word until the player actually stops
+    talking -- ending on `cfg.silence_stop_seconds` of trailing silence, not a
+    fixed duration, so a one-word "roll" and a full sentence both feel natural
+    instead of the mic always waiting out the same fixed window either way.
+
+    Returns an empty array if nothing is said within cfg.wait_seconds.
+    """
+    window = RollingWindow(sample_rate, cfg.analysis_window_seconds, keep_all=True)
+    heard_speech = False
+    last_speech_end = 0.0
+    while True:
+        sd.sleep(int(cfg.poll_seconds * 1000))
+        window.add(capture.drain())
+        timestamps = vad.speech_timestamps(window.audio, sample_rate, cfg.threshold)
+        if timestamps:
+            heard_speech = True
+            last_speech_end = window.start + timestamps[-1]["end"]
+        if heard_speech:
+            if window.elapsed - last_speech_end >= cfg.silence_stop_seconds:
+                break
+            if window.elapsed >= cfg.max_seconds:
+                log.info("command ran long, cutting off at %.0fs", cfg.max_seconds)
+                break
+        elif window.elapsed >= cfg.wait_seconds:
+            log.info("nothing said after the wake word")
+            return np.zeros(0, dtype="float32")
+    return window.all_audio
 
 
 # ---------------------------------------------------------------------------

@@ -83,6 +83,10 @@ export type VoiceControlStatus = {
    * showing a player when it's actually their moment to talk. Null before
    * anything's arrived, e.g. before play_game.py is even running. */
   voiceStatus: VoiceStatus | null;
+  /** The most recent non-empty thing the mic heard, whatever became of it --
+   * so a player can see what was actually transcribed instead of only seeing
+   * its eventual effect (or lack of one). Null before anything's been heard. */
+  lastTranscript: string | null;
 };
 
 /**
@@ -136,8 +140,14 @@ export function useVoiceControl({
 
   const [connected, setConnected] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus | null>(null);
+  const [lastTranscript, setLastTranscript] = useState<string | null>(null);
 
   const handleVoiceTranscript = async (msg: VoiceTranscript) => {
+    // Shown regardless of what happens with it below (dropped, unclear,
+    // acted on) -- a player watching the screen should be able to see what
+    // the mic actually heard, not just infer it from whether something moved.
+    if (msg.text.trim()) setLastTranscript(msg.text.trim());
+
     // Wraps one model call: sets llmPending for its duration so nothing else
     // (another voice command, a button) fires while it's in flight, mirroring
     // how askClick already guards its own move-resolution call.
@@ -325,5 +335,5 @@ export function useVoiceControl({
     });
   }, [gameState, currentPlayer]);
 
-  return { connected, voiceStatus };
+  return { connected, voiceStatus, lastTranscript };
 }
