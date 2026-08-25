@@ -14,6 +14,7 @@ import { gameState } from "../../systems/game/state";
 import { positionState } from "../../systems/position/state";
 import { locationSettingsSystem } from "../../systems/settings/location";
 import { locationSettingsState } from "../../systems/settings/location/state";
+import { playerSettingsState } from "../../systems/settings/players/state";
 import { AMBIENT_SYMBOL, PORTAL_RANGE, visionState } from "../../vision/state";
 
 import { FowLayer } from "./fow";
@@ -230,7 +231,38 @@ export class FowLightingLayer extends FowLayer {
                     }
 
                     this.vCtx.fill();
-                    this.ctx.drawImage(this.virtualCanvas, 0, 0, window.innerWidth, window.innerHeight);
+
+                    // Composite only the light's own footprint, not the whole
+                    // screen. The `source-in` fill above leaves the virtual
+                    // canvas transparent everywhere outside a circle of
+                    // `innerRange` around `lcenter` -- the arc is what it was
+                    // intersected with -- so copying the other 95% of a
+                    // 2560x1440 canvas moves several megapixels per light per
+                    // redraw to blend nothing. Two 40-unit lights on this table
+                    // were copying 7.4 MPix to composite 0.7 MPix of them.
+                    const dpr = playerSettingsState.devicePixelRatio.value;
+                    const x0 = Math.max(0, Math.floor(lcenter.x - innerRange));
+                    const y0 = Math.max(0, Math.floor(lcenter.y - innerRange));
+                    const x1 = Math.min(window.innerWidth, Math.ceil(lcenter.x + innerRange));
+                    const y1 = Math.min(window.innerHeight, Math.ceil(lcenter.y + innerRange));
+                    if (x1 > x0 && y1 > y0) {
+                        const w = x1 - x0;
+                        const h = y1 - y0;
+                        // Source coordinates are in device pixels (the canvas
+                        // is dpr-scaled); destination ones go through the ctx
+                        // transform, which already applies dpr.
+                        this.ctx.drawImage(
+                            this.virtualCanvas,
+                            x0 * dpr,
+                            y0 * dpr,
+                            w * dpr,
+                            h * dpr,
+                            x0,
+                            y0,
+                            w,
+                            h,
+                        );
+                    }
                 }
             }
 

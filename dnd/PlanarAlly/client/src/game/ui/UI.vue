@@ -26,6 +26,7 @@ import ModalStack from "./ModalStack.vue";
 import FactionPanel from "./FactionPanel.vue";
 import LayerPanel from "./LayerPanel.vue";
 import TurnOrderBar from "./TurnOrderBar.vue";
+import ActionBook from "./ActionBook.vue";
 import GhostConsole from "./GhostConsole.vue";
 import ShortcutHelp from "./ShortcutHelp.vue";
 import SelectionInfo from "./SelectionInfo.vue";
@@ -231,6 +232,7 @@ function setTempZoomDisplay(value: number): void {
         <FactionPanel />
         <LayerPanel />
         <TurnOrderBar />
+        <ActionBook />
         <!-- end of main modals -->
     </div>
 </template>

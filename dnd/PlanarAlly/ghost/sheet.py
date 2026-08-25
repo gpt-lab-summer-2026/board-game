@@ -126,7 +126,9 @@ class AttackResult:
     """
 
     to_hit: Any | None
-    damage: Any
+    """None when the caller asked for the damage roll to be deferred until the
+    attack is known to have landed."""
+    damage: Any | None
     attack: dict[str, Any]
 
     def __iter__(self):
@@ -145,6 +147,16 @@ _BIAS_KEY = {
 }
 
 
+async def roll_damage(
+    client: GhostClient,
+    attack: dict[str, Any],
+    as_player: str | None = None,
+    share_with: str = "all",
+):
+    """Roll one attack descriptor's damage. Split out so it can wait for a hit."""
+    return await client.roll_dice(attack["damage"], share_with=share_with, as_player=as_player)
+
+
 async def roll_attack(
     client: GhostClient,
     shape: str,
@@ -152,6 +164,7 @@ async def roll_attack(
     bias: str = "normal",
     as_player: str | None = None,
     share_with: str = "all",
+    defer_damage: bool = False,
 ):
     """Roll a character's attack and damage, announced under their own name.
 
@@ -161,6 +174,12 @@ async def roll_attack(
 
     A save-based cantrip has no attack roll at all -- it is the target who
     rolls -- so only the damage is returned, paired with None.
+
+    `defer_damage` leaves `.damage` as None for the caller to roll later with
+    `roll_damage`. Rolling both up front put a damage die in everyone's dice log
+    on every miss -- visible, shared, and meaningless, since nothing was going to
+    be dealt. It also invited the table to read the number. Has no effect on a
+    save-based cantrip, which has no attack roll to miss with.
     """
     if kind not in ATTACK_KINDS:
         raise ValueError(f"unknown attack kind {kind!r}; expected one of {ATTACK_KINDS}")
@@ -188,7 +207,14 @@ async def roll_attack(
         return AttackResult(None, damage, attack)
 
     to_hit = await client.roll_dice(notation, share_with=share_with, as_player=as_player)
-    damage = await client.roll_dice(attack["damage"], share_with=share_with, as_player=as_player)
+    if defer_damage:
+        log.info(
+            "%s (%s%s): %s to hit, damage deferred",
+            name, kind, "" if bias == "normal" else f", {bias}", to_hit.total,
+        )
+        return AttackResult(to_hit, None, attack)
+
+    damage = await roll_damage(client, attack, as_player=as_player, share_with=share_with)
     log.info(
         "%s (%s%s): %s to hit, %s damage",
         name, kind, "" if bias == "normal" else f", {bias}", to_hit.total, damage.total,
@@ -232,6 +258,20 @@ def _bias_notation(bonus: int, bias: str) -> str:
     if bias == "disadvantage":
         return f"2d20kl1{tail}"
     return f"1d20{tail}"
+
+
+def ability_mod(sheet: dict[str, Any] | None, ability: str) -> int:
+    """The plain ability modifier, with no proficiency in it.
+
+    Distinct from `save_bonus`, which prefers the mod's computed save and so
+    includes proficiency where the character has it. Initiative is the raw
+    Dexterity modifier -- a rogue proficient in DEX saves does not add their
+    proficiency bonus to initiative -- so using `save_bonus` here would quietly
+    hand half the party two or three extra points.
+    """
+    if not sheet:
+        return 0
+    return _ability_mod((sheet.get("abilities") or {}).get(ability, 10))
 
 
 def save_bonus(sheet: dict[str, Any] | None, ability: str) -> int:
@@ -345,6 +385,66 @@ def find_prepared(sheet: dict[str, Any] | None, name: str) -> dict[str, Any] | N
     return None
 
 
+async def _catalogue_items(client: GhostClient) -> list[dict[str, Any]]:
+    cat = await read_catalogue(client)
+    return list((cat or {}).get("items") or [])
+
+
+async def carried_names(client: GhostClient, sheet: dict[str, Any]) -> str:
+    """What this character has in their pack, for an error message worth reading."""
+    items = {i.get("id"): i for i in await _catalogue_items(client)}
+    parts = []
+    for entry in sheet.get("inventory") or []:
+        item = items.get(entry.get("id")) or {}
+        parts.append(f"{item.get('name') or entry.get('id')} x{entry.get('quantity', 0)}")
+    return ", ".join(parts)
+
+
+async def find_carried(
+    client: GhostClient, sheet: dict[str, Any], spoken: str
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Match a spoken item name against what is actually in the pack.
+
+    Returns (catalogue entry, inventory entry). Both None when they do not have
+    one -- being out of potions and never having carried them should read the
+    same way at the table, and the count is what the message reports.
+    """
+    wanted = spoken.strip().lower()
+    if not wanted:
+        return None, None
+    items = {i.get("id"): i for i in await _catalogue_items(client)}
+
+    best: tuple[dict[str, Any], dict[str, Any]] | None = None
+    for entry in sheet.get("inventory") or []:
+        if int(entry.get("quantity") or 0) <= 0:
+            continue
+        item = items.get(entry.get("id"))
+        if item is None:
+            continue
+        label = str(item.get("name", "")).lower()
+        if label == wanted:
+            return item, entry
+        if label and (label in wanted or wanted in label):
+            best = (item, entry)
+    return best if best else (None, None)
+
+
+async def spend_item(client: GhostClient, shape: str, item_id: str) -> int:
+    """Use one up. Returns how many are left."""
+    data = await read_sheet(client, shape)
+    if data is None:
+        return 0
+    inventory = [dict(e) for e in (data.get("inventory") or [])]
+    left = 0
+    for entry in inventory:
+        if entry.get("id") == item_id:
+            entry["quantity"] = max(0, int(entry.get("quantity") or 0) - 1)
+            left = entry["quantity"]
+    data["inventory"] = inventory
+    await write_sheet(client, shape, data)
+    return left
+
+
 async def set_ac_modifier(
     client: GhostClient, shape: str, value: int, source: str, rounds: int | None
 ) -> int:
@@ -418,6 +518,15 @@ async def set_condition(
     return conditions
 
 
+async def condition_label(client: GhostClient, condition_id: str) -> str:
+    """A condition's display name, falling back to its id."""
+    cat = await read_catalogue(client)
+    for entry in (cat or {}).get("conditions") or []:
+        if entry.get("id") == condition_id:
+            return str(entry.get("name") or condition_id)
+    return condition_id
+
+
 async def condition_names(client: GhostClient, ids: list[str]) -> list[str]:
     catalogue = await read_catalogue(client) or {}
     lookup = {c["id"]: c["name"] for c in catalogue.get("conditions", [])}
@@ -479,8 +588,33 @@ async def set_hp(
     return hp
 
 
+async def heal(client: GhostClient, shape: str, amount: int) -> dict[str, Any]:
+    """Restore hit points, never past the maximum.
+
+    A separate function rather than negative damage. `damage` spends temporary
+    hit points first, and that arithmetic inverts on a negative amount:
+    `min(temp, -6)` is -6, so the subtraction cancels out and the "healing"
+    lands in the temp pool instead. Two potions left a character on the same
+    hit points with twelve phantom temporary ones, and every line printed said
+    it had worked.
+    """
+    sheet = await read_sheet(client, shape)
+    if sheet is None:
+        raise KeyError(f"no sheet for shape {shape}")
+
+    hp = sheet["hp"]
+    restored = min(int(hp["max"]), max(0, int(hp["current"])) + max(0, int(amount)))
+    return await set_hp(client, shape, current=restored)
+
+
 async def damage(client: GhostClient, shape: str, amount: int) -> dict[str, Any]:
     """Apply damage, spending temporary hit points first as 5e does."""
+    if amount < 0:
+        # Callers used to express healing this way. Redirected rather than
+        # rejected, because the failure was silent and there may be more of
+        # them; `heal` is the function to reach for.
+        return await heal(client, shape, -amount)
+
     sheet = await read_sheet(client, shape)
     if sheet is None:
         raise KeyError(f"no sheet for shape {shape}")

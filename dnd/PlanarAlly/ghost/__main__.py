@@ -90,7 +90,7 @@ def main() -> None:
         help="parse and plan, but emit nothing to the game",
     )
     p.add_argument("--no-speech", action="store_true", help="skip Kokoro narration")
-    p.add_argument("--voice", default="af_heart")
+    p.add_argument("--voice", default="af_bella")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args()
 

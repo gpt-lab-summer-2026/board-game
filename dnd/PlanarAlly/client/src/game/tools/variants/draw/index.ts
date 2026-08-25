@@ -610,7 +610,15 @@ class DrawTool extends Tool implements ITool {
         if (this.brushHelper !== undefined) {
             this.brushHelper.r = this.helperSize;
             this.brushHelper.refPoint = endPoint;
-            if (!this.active.value) layer.invalidate(false);
+            // `invalidate(false)` means "and recompute the lighting". The brush
+            // helper is the circle that follows the cursor; it blocks nothing
+            // and emits nothing, so moving it cannot change what any light
+            // reaches. Recomputing anyway ran a full visibility pass on every
+            // mouse-move event -- with TRIANGLE vision and a couple of light
+            // sources that is a retriangulation per frame, which showed up as
+            // shadows flickering under the cursor and a draw tool that crawled.
+            // The pointer branch immediately above already skips it.
+            if (!this.active.value) layer.invalidate(true);
         }
 
         if (!this.active.value || this.startPoint === undefined || this.shape === undefined) return Promise.resolve();
@@ -685,7 +693,13 @@ class DrawTool extends Tool implements ITool {
                 }
             }
         }
-        layer.invalidate(false);
+        // Only relight when the thing being drawn actually affects light. The
+        // branch above already recalculates vision for a shape that blocks it;
+        // for an ordinary line or rectangle there is nothing for the lighting
+        // pass to discover, and running it per mouse-move while dragging is the
+        // same waste as the brush helper above.
+        const blocksVision = getProperties(this.shape.id)?.blocksVision !== VisionBlock.No;
+        layer.invalidate(!blocksVision);
         return Promise.resolve();
     }
 

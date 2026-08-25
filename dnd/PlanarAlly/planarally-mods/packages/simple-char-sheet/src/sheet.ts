@@ -68,7 +68,21 @@ async function loadBlock(shape: GlobalId): Promise<DataBlock<CharacterSheet> | u
     // does not make a second round-trip.
     const existing = await api.getOrLoadDataBlock<CharacterSheet>(repr);
     if (existing !== undefined) {
-        if (fillDefaults(existing.reactiveData.value)) existing.sync();
+        // Two separate reasons to write, and gating the second on the first was
+        // a mistake worth spelling out. `fillDefaults` only reports whether a
+        // *raw* field was missing; a sheet opened once under an older version
+        // already has every key, so it returns false forever after -- while
+        // `derived` still holds that version's empty defaults. Four characters
+        // sat with zero skills and no spell slots through three reloads because
+        // the recompute lived inside that `if`.
+        //
+        // So: fill, then always recompute, and write if either changed.
+        const filled = fillDefaults(existing.reactiveData.value);
+        const before = JSON.stringify(existing.reactiveData.value.derived);
+        existing.reactiveData.value.derived = deriveSheet(existing.reactiveData.value);
+        if (filled || JSON.stringify(existing.reactiveData.value.derived) !== before) {
+            existing.sync();
+        }
         return existing;
     }
 

@@ -34,6 +34,30 @@ class Action(str, Enum):
     CHECK = "check"
     CONTEST = "contest"
     CAST = "cast"
+    RETREAT = "retreat"
+    MOVE_DIR = "move_dir"
+    JUMP = "jump"
+    USE_ITEM = "use_item"
+    DASH = "dash"
+    PROLOGUE = "prologue"
+    STORY_RESET = "story_reset"
+    TARGET = "target"
+    CLEAR_TARGET = "clear_target"
+    OPPORTUNITY = "opportunity"
+    UNDO = "undo"
+    RAGE = "rage"
+    LONG_REST = "long_rest"
+    LEVEL_UP = "level_up"
+    RESUME = "resume"
+    DM_AUTO = "dm_auto"
+    TELEPORT = "teleport"
+    SET_ROUND = "set_round"
+    ROLL_INITIATIVE = "roll_initiative"
+    CLEAR_INITIATIVE = "clear_initiative"
+    END_COMBAT = "end_combat"
+    NEXT_TURN = "next_turn"
+    PREV_TURN = "prev_turn"
+    WHOSE_TURN = "whose_turn"
     CONFIRM = "confirm"
     CANCEL = "cancel"
     HELP = "help"
@@ -71,6 +95,10 @@ class Intent:
     contest: str | None = None
     """Spell name, as spoken."""
     spell: str | None = None
+    """Compass heading: north, southwest, and so on."""
+    direction: str | None = None
+    """Consumable name, as spoken."""
+    item: str | None = None
     raw: str = ""
 
 
@@ -78,23 +106,48 @@ class ParseError(ValueError):
     """Raised with a message meant to be read aloud to the player."""
 
 
+class ClarificationNeeded(ParseError):
+    """The translator asked the player something instead of issuing a command.
+
+    Subclasses ParseError deliberately: callers written before the two-channel
+    contract existed catch ParseError and report "unclear", which is a poor
+    answer but not a broken one. Callers that know about it read `.question`
+    and put it to the player instead.
+    """
+
+    def __init__(self, question: str) -> None:
+        super().__init__(question)
+        self.question = question
+
+
+# Words that name *which* attack, as opposed to the fact that one is happening.
+# Deliberately generous: this is spoken at a table, and a parser that only
+# accepts the wording in the help text pushes every other phrasing out to the
+# cluster for a two-second round trip -- or worse, refuses it.
 _KIND_WORDS = {
-    "melee": AttackKind.MELEE,
-    "close": AttackKind.MELEE,
-    "sword": AttackKind.MELEE,
-    "claw": AttackKind.MELEE,
-    "claws": AttackKind.MELEE,
-    "bite": AttackKind.MELEE,
-    "ranged": AttackKind.RANGED,
-    "range": AttackKind.RANGED,
-    "bow": AttackKind.RANGED,
-    "shoot": AttackKind.RANGED,
-    "shoots": AttackKind.RANGED,
-    "fire": AttackKind.RANGED,
-    "cantrip": AttackKind.CANTRIP,
-    "spell": AttackKind.CANTRIP,
-    "cast": AttackKind.CANTRIP,
-    "casts": AttackKind.CANTRIP,
+    # melee
+    "melee": AttackKind.MELEE, "close": AttackKind.MELEE, "adjacent": AttackKind.MELEE,
+    "sword": AttackKind.MELEE, "blade": AttackKind.MELEE, "axe": AttackKind.MELEE,
+    "staff": AttackKind.MELEE, "quarterstaff": AttackKind.MELEE, "mace": AttackKind.MELEE,
+    "spear": AttackKind.MELEE, "rapier": AttackKind.MELEE, "dagger": AttackKind.MELEE,
+    "claw": AttackKind.MELEE, "claws": AttackKind.MELEE, "bite": AttackKind.MELEE,
+    "hooves": AttackKind.MELEE, "punch": AttackKind.MELEE, "unarmed": AttackKind.MELEE,
+    "stab": AttackKind.MELEE, "stabs": AttackKind.MELEE,
+    "slash": AttackKind.MELEE, "slashes": AttackKind.MELEE,
+    "swing": AttackKind.MELEE, "swings": AttackKind.MELEE,
+    "smack": AttackKind.MELEE, "smacks": AttackKind.MELEE,
+    "clobber": AttackKind.MELEE, "clobbers": AttackKind.MELEE,
+    # ranged
+    "ranged": AttackKind.RANGED, "range": AttackKind.RANGED, "distance": AttackKind.RANGED,
+    "bow": AttackKind.RANGED, "shortbow": AttackKind.RANGED, "longbow": AttackKind.RANGED,
+    "crossbow": AttackKind.RANGED, "sling": AttackKind.RANGED, "javelin": AttackKind.RANGED,
+    "arrow": AttackKind.RANGED, "bolt": AttackKind.RANGED, "shoot": AttackKind.RANGED,
+    "shoots": AttackKind.RANGED, "fire": AttackKind.RANGED, "loose": AttackKind.RANGED,
+    # cantrip / spell attack
+    "cantrip": AttackKind.CANTRIP, "spell": AttackKind.CANTRIP, "cast": AttackKind.CANTRIP,
+    "casts": AttackKind.CANTRIP, "magic": AttackKind.CANTRIP, "magical": AttackKind.CANTRIP,
+    "arcane": AttackKind.CANTRIP, "zap": AttackKind.CANTRIP, "zaps": AttackKind.CANTRIP,
+    "blast": AttackKind.CANTRIP, "blasts": AttackKind.CANTRIP, "bolt_spell": AttackKind.CANTRIP,
 }
 
 _BIAS_WORDS = {
@@ -118,7 +171,11 @@ def _bias_of(text: str) -> str:
     return "normal"
 
 
-_ATTACK_VERBS = ("attack", "attacks", "strike", "strikes", "hit", "hits", "shoot", "shoots", "cast", "casts")
+_ATTACK_VERBS = (
+    "attack", "attacks", "strike", "strikes", "hit", "hits", "shoot", "shoots",
+    "cast", "casts", "stab", "stabs", "slash", "slashes", "swing", "swings",
+    "zap", "zaps", "blast", "blasts", "smack", "smacks", "clobber", "clobbers",
+)
 _MOVE_VERBS = ("move", "moves", "walk", "walks", "go", "goes", "approach", "approaches")
 _MEASURE_VERBS = ("measure", "distance", "range", "far", "ruler")
 
@@ -199,7 +256,7 @@ _CHECK_RE = re.compile(
 
 # "elf grapples gobbo", "atton shoves the goblin", "cat disarms emo"
 _CONTEST_RE = re.compile(
-    r"^\s*(?P<a>.+?)\s+(?:tries\s+to\s+)?(?P<verb>grapples?|shoves?|disarms?)\s+(?P<b>.+?)\s*$",
+    r"^\s*(?P<a>.+?)\s+(?:tries\s+to\s+)?(?P<verb>grapples?|shoves?|disarms?|topples?|trips?)\s+(?P<b>.+?)\s*$",
     re.I,
 )
 
@@ -208,6 +265,65 @@ _CONTEST_RE = re.compile(
 _CAST_RE = re.compile(
     r"^\s*(?:(?P<who>.+?)\s+casts?|casts?)\s+(?P<spell>.+?)"
     r"(?:\s+(?:on|at|against|targeting)\s+(?P<target>.+?))?\s*$",
+    re.I,
+)
+
+# "elf dashes", "cat takes the dash action", "elf dash"
+_RAGE_RE = re.compile(r"^\s*(?P<a>.+?)\s+(?:rages|enters?\s+(?:a\s+)?rage|goes\s+berserk)\s*$", re.I)
+_LEVEL_UP_RE = re.compile(r"^\s*(?:level\s+up\s+(?P<b>.+?)|(?P<a>.+?)\s+levels?\s+up)\s*$", re.I)
+_LONG_REST = {"long rest", "take a long rest", "the party rests", "make camp", "rest for the night"}
+
+_DASH_RE = re.compile(r"^\s*(?P<a>.+?)\s+(?:takes\s+the\s+)?dash(?:es|\s+action)?\s*$", re.I)
+
+# "elf jumps towards hamster", "cat leaps at emo", "elf jumps north"
+_JUMP_RE = re.compile(
+    r"^\s*(?P<a>.+?)\s+(?:jumps?|leaps?|vaults?|springs?)\s+"
+    # Preposition optional: "jumps at the goblin" and "jumps north" are the
+    # same verb, and requiring one silently lost every bare direction.
+    r"(?:towards?|at|to|onto|over\s+to)?\s*(?P<b>.+?)\s*$",
+    re.I,
+)
+
+# "elf drinks a potion of healing", "cat throws a smokepowder bomb at emo",
+# "elf uses alchemist's fire on hamster"
+_ITEM_RE = re.compile(
+    r"^\s*(?P<a>.+?)\s+(?:drinks?|quaffs?|throws?|lobs?|hurls?|uses?|applies)\s+"
+    r"(?:an?\s+|the\s+)?(?P<item>.+?)"
+    r"(?:\s+(?:on|at|against|towards?)\s+(?P<b>.+?))?\s*$",
+    re.I,
+)
+
+# Spoken forms of the eight headings, including the abbreviations people
+# actually say at a table.
+DIRECTION_WORDS = {
+    "north": "north", "n": "north", "up": "north",
+    "south": "south", "s": "south", "down": "south",
+    "east": "east", "e": "east", "right": "east",
+    "west": "west", "w": "west", "left": "west",
+    "northeast": "northeast", "north east": "northeast", "ne": "northeast",
+    "northwest": "northwest", "north west": "northwest", "nw": "northwest",
+    "southeast": "southeast", "south east": "southeast", "se": "southeast",
+    "southwest": "southwest", "south west": "southwest", "sw": "southwest",
+}
+
+_DIR_ALT = "|".join(sorted((re.escape(w) for w in DIRECTION_WORDS), key=len, reverse=True))
+
+# "elf moves north", "cat goes to the southwest", "elf steps east"
+_DIRECTION_RE = re.compile(
+    rf"^\s*(?P<a>.+?)\s+(?:moves?|goes|go|walks?|steps?|heads?|runs?)\s+"
+    rf"(?:to\s+)?(?:the\s+)?(?P<dir>{_DIR_ALT})(?:wards?)?\s*$",
+    re.I,
+)
+
+# "elf moves away from hamster", "elf retreats from the goblin",
+# "back cat off from emo", "elf flees hamster"
+_RETREAT_RE = re.compile(
+    r"^\s*(?P<a>.+?)\s+(?:"
+    r"(?:moves?|backs?|steps?|pulls?|gets?)\s+(?:away|back|off)\s+from"
+    r"|retreats?\s+from|withdraws?\s+from|runs?\s+(?:away\s+)?from|flees?(?:\s+from)?"
+    r"|disengages?\s+from"
+    r")\s+(?P<b>.+?)"
+    rf"(?:\s+(?:to|towards?|heading)\s+(?:the\s+)?(?P<dir>{_DIR_ALT})(?:wards?)?)?\s*$",
     re.I,
 )
 
@@ -231,14 +347,153 @@ def _clean(words: Iterable[str]) -> str:
     return " ".join(w for w in words if w not in _FILLER).strip()
 
 
+# The two channels the upstream translator answers on. Tolerated here so that a
+# tagged line can be handed straight to `parse` without the caller having to
+# know about the contract.
+# Spoken several ways at a real table, and all of them mean the same thing.
+# "end turn" is included deliberately: it is what people actually say, even
+# though what it does is start the next one.
+_NEXT_TURN = {
+    "next turn", "end turn", "end of turn", "turn over", "done", "i'm done",
+    "im done", "pass turn", "pass the turn", "next", "end my turn",
+}
+_PREV_TURN = {"previous turn", "prev turn", "last turn", "back a turn", "go back a turn"}
+# Set the standing target, so the next few commands do not have to name it.
+# Verb-first like `measure`, and matched before the actor-verb-target patterns
+# for the same reason: nothing here is an actor.
+_TARGET_RE = re.compile(
+    r"^\s*(?:we(?:'re| are)?\s+)?(?:now\s+)?"
+    r"(?:targeting|target|targetting|focus(?:ing)?\s+(?:on|fire\s+on)|aim(?:ing)?\s+at)"
+    r"\s+(?P<t>.+?)\s*$",
+    re.I,
+)
+# A reaction, so verb-first-ish and matched before the generic attack shapes --
+# "hamster takes an opportunity attack on elf" also parses as a plain attack,
+# and the plain reading would route it through `_do_move` and walk the hamster
+# across the map after the creature that just fled it.
+_OPPORTUNITY_RE = re.compile(
+    r"^\s*(?P<a>.+?)\s+(?:takes?\s+)?(?:an?\s+|the\s+)?"
+    r"(?:opportunity|attack\s+of\s+opportunity|reaction)\s*(?:attack)?\s*"
+    r"(?:on|at|against)\s+(?P<t>.+?)\s*$",
+    re.I,
+)
+
+_UNDO = {
+    "undo", "undo that", "take that back", "scratch that", "revert",
+    "undo the last thing", "put that back",
+}
+# Deliberately absent from HELP_TEXT. It is DM housekeeping the model never
+# needs to produce, and every line in that text is spent on every cluster call --
+# so it parses locally from an exact phrase and costs the prompt nothing.
+_SET_ROUND_RE = re.compile(
+    r"^\s*(?:set\s+|go\s+)?(?:back\s+to\s+)?round\s+(?:to\s+)?(?P<n>\d+|one)\s*$",
+    re.I,
+)
+# Also absent from HELP_TEXT: a repair tool, not a move. Nothing about it obeys
+# movement, terrain or the turn budget, which is exactly why the model should
+# never be able to reach for it.
+_TELEPORT_RE = re.compile(
+    r"^\s*(?:teleport|place|put)\s+(?P<a>.+?)\s+(?:to|at)\s+"
+    r"(?P<q>-?\d+)\s*[, ]\s*(?P<r>-?\d+)\s*$",
+    re.I,
+)
+# Grammar-only, like the other housekeeping: the model has no business turning
+# the monsters off.
+_RESUME = {
+    "resume", "continue", "carry on", "keep going", "go on", "pick up",
+    "pick up where we left off", "play the monsters", "run the monsters",
+    "resume combat", "your turn ghost", "take the enemy turns",
+}
+_DM_ON = {"dm auto on", "ghost runs the monsters", "monsters on", "dm on", "auto dm on"}
+_DM_OFF = {"dm auto off", "i'll run the monsters", "monsters off", "dm off", "auto dm off"}
+_RESET_ROUND = {"reset the round", "reset round", "restart the round count"}
+_ROLL_INITIATIVE = {
+    "roll initiative", "roll for initiative", "initiative", "roll initiatives",
+    "start combat", "begin combat", "everyone roll initiative", "roll init",
+}
+_CLEAR_INITIATIVE = {"clear initiative", "reset initiative", "clear the tracker"}
+_END_COMBAT = {"end combat", "combat over", "end the fight", "stop combat", "wipe initiative"}
+_PROLOGUE = {
+    "begin", "begin the story", "opening", "prologue", "tell the story",
+    "set the scene", "story", "tell it again", "read the opening",
+}
+_STORY_RESET = {"reset the story", "forget the story", "new session"}
+_CLEAR_TARGET = {
+    "clear target", "clear the target", "stop targeting", "no target",
+    "forget the target", "untarget", "drop target",
+}
+_WHOSE_TURN = {
+    "whose turn", "whose turn is it", "who's turn", "whos turn", "who is up",
+    "who's up", "turn order", "initiative order",
+}
+
+_CMD_TAG = re.compile(r"^\s*CMD\s*:\s*", re.I)
+_ASK_TAG = re.compile(r"^\s*ASK\s*:\s*", re.I)
+
+
 def parse(text: str) -> Intent:
-    raw = text.strip()
+    asked = _ASK_TAG.match(text or "")
+    if asked:
+        raise ClarificationNeeded(text[asked.end():].strip())
+    raw = _CMD_TAG.sub("", text or "").strip()
     lowered = raw.lower()
     if not lowered:
         raise ParseError("Nothing to do -- say a command.")
 
     if lowered in {"help", "?", "commands"}:
         return Intent(Action.HELP, raw=raw)
+    # Turn control is actorless, so it is matched here as whole phrases rather
+    # than by a regex further down -- everything below this point expects to
+    # pull a character name out of the string first.
+    if lowered in _NEXT_TURN:
+        return Intent(Action.NEXT_TURN, raw=raw)
+    if lowered in _PREV_TURN:
+        return Intent(Action.PREV_TURN, raw=raw)
+    if lowered in _WHOSE_TURN:
+        return Intent(Action.WHOSE_TURN, raw=raw)
+    ported = _TELEPORT_RE.match(trimmed if False else raw)
+    if ported:
+        who = _clean(ported["a"].split())
+        if who:
+            # q and r ride on the two spare integer fields rather than adding a
+            # pair of coordinates to every Intent for one command's sake.
+            return Intent(Action.TELEPORT, actor=who, dc=int(ported["q"]),
+                          heal_amount=int(ported["r"]), raw=raw)
+    if lowered in _RESUME:
+        return Intent(Action.RESUME, raw=raw)
+    if lowered in _DM_ON:
+        return Intent(Action.DM_AUTO, condition_on=True, raw=raw)
+    if lowered in _DM_OFF:
+        return Intent(Action.DM_AUTO, condition_on=False, raw=raw)
+    if lowered in _LONG_REST:
+        return Intent(Action.LONG_REST, raw=raw)
+    if lowered in _RESET_ROUND:
+        return Intent(Action.SET_ROUND, dc=1, raw=raw)
+    numbered = _SET_ROUND_RE.match(lowered)
+    if numbered:
+        n = numbered["n"]
+        # `dc` is the intent's general-purpose integer; a second one just for
+        # this would be a field on every Intent for one command's sake.
+        return Intent(Action.SET_ROUND, dc=1 if n == "one" else int(n), raw=raw)
+    if lowered in _UNDO:
+        return Intent(Action.UNDO, raw=raw)
+    if lowered in _ROLL_INITIATIVE:
+        return Intent(Action.ROLL_INITIATIVE, raw=raw)
+    if lowered in _CLEAR_INITIATIVE:
+        return Intent(Action.CLEAR_INITIATIVE, raw=raw)
+    if lowered in _END_COMBAT:
+        return Intent(Action.END_COMBAT, raw=raw)
+    if lowered in _PROLOGUE:
+        return Intent(Action.PROLOGUE, raw=raw)
+    if lowered in _STORY_RESET:
+        return Intent(Action.STORY_RESET, raw=raw)
+    if lowered in _CLEAR_TARGET:
+        return Intent(Action.CLEAR_TARGET, raw=raw)
+    aimed = _TARGET_RE.match(raw)
+    if aimed:
+        who = _clean(aimed["t"].split())
+        if who:
+            return Intent(Action.TARGET, target=who, raw=raw)
     if lowered in _YES:
         return Intent(Action.CONFIRM, raw=raw)
     if lowered in _NO:
@@ -350,6 +605,91 @@ def parse(text: str) -> Intent:
             raw=raw,
         )
 
+    opp = _OPPORTUNITY_RE.match(trimmed)
+    if opp:
+        who, whom = _clean(opp["a"].split()), _clean(opp["t"].split())
+        if who and whom:
+            return Intent(Action.OPPORTUNITY, actor=who, target=whom,
+                          kind=AttackKind.MELEE, bias=bias, raw=raw)
+
+    raged = _RAGE_RE.match(trimmed)
+    if raged:
+        who = _clean(raged["a"].split())
+        if who:
+            return Intent(Action.RAGE, actor=who, raw=raw)
+
+    levelled = _LEVEL_UP_RE.match(trimmed)
+    if levelled:
+        who = _clean((levelled["a"] or levelled["b"] or "").split())
+        if who:
+            return Intent(Action.LEVEL_UP, actor=who, raw=raw)
+
+    dashed = _DASH_RE.match(trimmed)
+    if dashed:
+        who = _clean(dashed["a"].split())
+        if not who:
+            raise ParseError("Who is dashing?")
+        return Intent(Action.DASH, actor=who, raw=raw)
+
+    jumped = _JUMP_RE.match(trimmed)
+    if jumped:
+        actor = _clean(jumped["a"].split())
+        target_word = _clean(jumped["b"].split())
+        if not actor or not target_word:
+            raise ParseError("Jump towards what?")
+        heading = DIRECTION_WORDS.get(target_word)
+        # "jumps north" is a direction; "jumps at the goblin" is a target. Both
+        # are the same verb, so the object decides which.
+        return Intent(
+            Action.JUMP,
+            actor=actor,
+            target=None if heading else target_word,
+            direction=heading,
+            raw=raw,
+        )
+
+    fled = _RETREAT_RE.match(trimmed)
+    if fled:
+        actor = _clean(fled["a"].split())
+        target = _clean(fled["b"].split())
+        if not actor or not target:
+            raise ParseError("Away from whom?")
+        return Intent(
+            Action.RETREAT,
+            actor=actor,
+            target=target,
+            direction=DIRECTION_WORDS.get((fled["dir"] or "").lower()),
+            raw=raw,
+        )
+
+    # After retreat: "elf moves away from hamster" also matches the bare
+    # directional shape if "away from hamster" were ever a heading, and the
+    # more specific reading is the right one.
+    headed = _DIRECTION_RE.match(trimmed)
+    if headed:
+        actor = _clean(headed["a"].split())
+        if not actor:
+            raise ParseError("Who is moving?")
+        return Intent(
+            Action.MOVE_DIR,
+            actor=actor,
+            direction=DIRECTION_WORDS[headed["dir"].lower()],
+            raw=raw,
+        )
+
+    used = _ITEM_RE.match(trimmed)
+    if used:
+        actor = _clean(used["a"].split())
+        thing = _clean(used["item"].split())
+        if actor and thing:
+            return Intent(
+                Action.USE_ITEM,
+                actor=actor,
+                target=_clean(used["b"].split()) if used["b"] else None,
+                item=thing,
+                raw=raw,
+            )
+
     cast_m = _CAST_RE.match(trimmed)
     if cast_m:
         who = _clean((cast_m["who"] or "").split())
@@ -412,6 +752,11 @@ def parse(text: str) -> Intent:
         (i for i, w in enumerate(words) if w in _ATTACK_VERBS or w in _MOVE_VERBS or w in _MEASURE_VERBS),
         None,
     )
+    # "elf cantrip on emo" names a kind and no verb -- and it is a shape the
+    # help text advertises, so refusing it was a straight contradiction. Naming
+    # which attack you want is stating that you are attacking.
+    if verb_index is None and kind is not None:
+        verb_index = next(i for i, w in enumerate(words) if w in _KIND_WORDS)
     if verb_index is None:
         raise ParseError(
             f"I couldn't find an action in {raw!r}. Try 'elf ranged attack on goblin'."
@@ -442,14 +787,18 @@ def parse(text: str) -> Intent:
 
     if actor is None:
         raise ParseError(f"Who is acting? I heard {raw!r}.")
-    if target is None:
-        raise ParseError(f"{actor} needs a target. Try '{actor} melee attack on goblin'.")
+    # A targetless attack parses. It used to be a ParseError, which meant "elf
+    # attacks" could never be completed from the standing target however clearly
+    # it had just been set -- and worse, the failure sent the line off to the
+    # translator as if it were prose. The console fills the target in and gives
+    # a better refusal than this could if there is nothing to fill it from.
 
     if action is Action.ATTACK and kind is None:
         # "cast"/"shoot" already imply a kind; a bare "attack" does not, and
         # guessing melee would send a wizard running at a dragon.
         raise ParseError(
-            f"Melee, ranged or cantrip? Try '{actor} ranged attack on {target}'."
+            f"Melee, ranged or cantrip? Try '{actor} ranged attack"
+            + (f" on {target}'." if target else "'.")
         )
 
     return Intent(action=action, actor=actor, target=target, kind=kind, bias=bias, raw=raw)
@@ -460,6 +809,10 @@ HELP_TEXT = """Commands:
   <actor> ranged attack on <target>     shoot from where you stand
   <actor> cantrip on <target>           cast the equipped cantrip
   <actor> moves to <target>             walk towards without attacking
+  <actor> moves away from <target> [to <dir>]   back off as far as movement allows
+  <actor> moves <dir>                  north, southwest, ... as far as possible
+  <actor> jumps to <target|dir>        a running jump, limited by Strength
+  <actor> drinks/throws <item> [on <target>]   use a consumable
   measure from <actor> to <target>      distance and line of sight, drawn on the map
   duplicate <actor> [as <name>]         copy a character, sheet and all
   apply <condition> to <target>         prone, poisoned, stunned, ...
@@ -471,6 +824,19 @@ HELP_TEXT = """Commands:
   <actor> casts <spell> [on <target>]  spend a slot and resolve it
   <actor> <ability> save [dc N]        one saving throw
   <actor> <skill> check [dc N]         one ability or skill check
-  <actor> grapples/shoves/disarms <target>   a contested check
+  <actor> grapples/shoves/topples <target>   a contested check
+  <actor> dashes                       double movement for the turn
+  <actor> rages                        barbarian: bonus melee damage, half damage taken
+  long rest                            hit points, slots and rages back to full
+  begin                                read the opening out loud
+  targeting <name>                     remember who to aim at; later commands may omit the target
+  clear target                         forget it again
+  <actor> opportunity attack on <target>   a reaction: no movement, and it costs the reaction
+  undo                                 put back whatever the last command changed
+  resume                               ghost plays every enemy turn up to your character's
+  roll initiative / end combat         start or finish combat for everyone on the board
+  next turn                            end the current turn and start the next
+  previous turn                        step the tracker back one
+  whose turn                           read the order back without changing it
 Add "with advantage" or "with disadvantage" to any attack.
 When the only route crosses a hazard the ghost asks first: answer yes or no."""
