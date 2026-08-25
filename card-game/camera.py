@@ -25,9 +25,11 @@ def detect_card(cam, instructions):
     label = None
     if key == ord('c'):
         card_text = detect_text(frame=frame)
-        matched_text, score, _ =  process_text(card_text)
-
-        label = matched_text if score > 70 else ERROR_MSG
+        if card_text is None:
+            label = ERROR_MSG
+        else:
+            matched_text, score, _ = process_text(card_text)
+            label = matched_text if score > 70 else ERROR_MSG
         result_frame = frame.copy()
         draw_instructions(result_frame, instructions + [f"The detected text was: {label}", "Press 'r' to redo, or any other key to accept"])
         cv2.imshow(WINDOW_NAME, result_frame)
