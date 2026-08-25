@@ -12,7 +12,7 @@
  * the job you actually do at the table is "these three are enemies", not
  * "open each token's settings in turn".
  */
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 
 import type { GlobalId } from "../../core/id";
 import { LayerName } from "../models/floor";
@@ -28,6 +28,16 @@ import { collectShapes } from "./shapeInventory";
 const visible = computed(() => uiState.reactive.showFactions);
 
 onMounted(() => void factionSystem.load());
+
+// A location load clears every system, including this one. The panel stays
+// mounted through it, so without this it would sit showing the default three
+// sides with nobody assigned to them.
+watch(
+    () => factionState.reactive.loaded,
+    (loaded) => {
+        if (!loaded) void factionSystem.load();
+    },
+);
 
 const newFactionName = ref("");
 const newFactionDisposition = ref<Disposition>("hostile");

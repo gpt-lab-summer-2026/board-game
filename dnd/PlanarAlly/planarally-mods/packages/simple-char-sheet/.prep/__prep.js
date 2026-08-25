@@ -1,0 +1,10 @@
+import { readFileSync } from "node:fs";
+import { emptySheet } from "./data.js";
+import { deriveSheet, reconcileSlots, spellSlotsFor } from "./rules.js";
+import { catalogue, findClass } from "./catalogue.js";
+const input = JSON.parse(readFileSync(0, "utf8"));
+catalogue.value = input.cat;
+const sheet = { ...emptySheet(), ...input.sheet };
+sheet.slots = reconcileSlots(sheet.slots, spellSlotsFor(findClass(sheet.classId), sheet.level));
+sheet.derived = deriveSheet(sheet);
+console.log(JSON.stringify(sheet));

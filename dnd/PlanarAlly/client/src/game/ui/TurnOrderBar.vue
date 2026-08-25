@@ -22,6 +22,7 @@ import { getShape } from "../id";
 import { gameState } from "../systems/game/state";
 import { getFaction, isProvoked } from "../systems/factions";
 import { propertiesState } from "../systems/properties/state";
+import { locationSettingsState } from "../systems/settings/location/state";
 import { turnBudgetSystem } from "../systems/turnbudget";
 import { turnBudgetState } from "../systems/turnbudget/state";
 import { initiativeStore } from "./initiative/state";
@@ -32,6 +33,24 @@ const isDm = computed(() => gameState.reactive.isDm);
 const round = computed(() => initiativeStore.state.roundCounter);
 const turn = computed(() => initiativeStore.state.turnCounter);
 const budget = computed(() => turnBudgetState.reactive.data);
+
+// Dash raises the ceiling rather than lowering the spend, so the total has to
+// include it -- otherwise a dashed creature reads "35 / 30 ft" and looks broken.
+const movementTotal = computed(() => budget.value.speed + (budget.value.speedBonus ?? 0));
+const movementLeft = computed(() => Math.max(0, movementTotal.value - budget.value.movementUsed));
+
+/**
+ * Spent, in the only sense that matters: not enough left to take a step.
+ *
+ * 28 of 30 feet on a seven-foot hex grid is two feet remaining and zero cells
+ * available -- the creature cannot move, and the pip stayed lit saying it
+ * could. The ghost's movers already round down to whole cells before deciding;
+ * this is the bar agreeing with them rather than reporting arithmetic.
+ */
+const movementSpent = computed(() => {
+    const feetPerCell = locationSettingsState.reactive.unitSize.value || 5;
+    return movementLeft.value < feetPerCell;
+});
 
 /** Only combatants the viewer is allowed to see, in initiative order. */
 const order = computed(() =>
@@ -76,16 +95,35 @@ function sideOf(actor: DeepReadonly<InitiativeData>): string {
 // Resetting on a watcher rather than from inside PA's initiative store keeps the
 // fork's diff off upstream's code. Guarded to the DM so five browsers do not
 // race to write the same reset.
-watch(
-    [round, turn, activeId],
-    () => {
-        if (!isDm.value) return;
-        turnBudgetSystem.syncToTurn(round.value, turn.value, activeId.value);
-    },
-    { immediate: true },
-);
+//
+// Deliberately NOT `immediate`. An immediate watcher fires before onMounted has
+// finished loading the DataBlock, so `save()` finds no block yet and drops the
+// write -- and then `load()` overwrites the local copy with the server's
+// defaults. The sync silently vanished, and since syncToTurn is idempotent on
+// (round, turn, active) it never tried again: the bar rendered correctly while
+// the budget behind it stayed empty.
+function syncNow(): void {
+    if (!isDm.value) return;
+    turnBudgetSystem.syncToTurn(round.value, turn.value, activeId.value);
+}
 
-onMounted(() => void turnBudgetSystem.load());
+watch([round, turn, activeId], syncNow);
+
+onMounted(async () => {
+    await turnBudgetSystem.load();
+    syncNow();
+});
+
+// Same reason as the Sides panel: a location load clears every system and this
+// component stays mounted through it, so the block has to be picked up again.
+watch(
+    () => turnBudgetState.reactive.loaded,
+    async (loaded) => {
+        if (loaded) return;
+        await turnBudgetSystem.load();
+        syncNow();
+    },
+);
 </script>
 
 <template>
@@ -114,7 +152,7 @@ onMounted(() => void turnBudgetSystem.load());
         <div v-if="activeActor" class="budget" :title="'What ' + nameOf(activeActor) + ' has left this turn'">
             <button
                 type="button"
-                class="pip"
+                class="pip action"
                 :class="{ spent: budget.action }"
                 :disabled="!isDm"
                 @click="turnBudgetSystem.spend('action', !budget.action)"
@@ -123,7 +161,7 @@ onMounted(() => void turnBudgetSystem.load());
             </button>
             <button
                 type="button"
-                class="pip"
+                class="pip bonus"
                 :class="{ spent: budget.bonus }"
                 :disabled="!isDm"
                 @click="turnBudgetSystem.spend('bonus', !budget.bonus)"
@@ -131,12 +169,14 @@ onMounted(() => void turnBudgetSystem.load());
                 Bonus
             </button>
             <span
-                class="pip"
+                class="pip reaction"
                 :class="{ spent: activeId !== null && !turnBudgetSystem.hasReaction(activeId) }"
             >
                 Reaction
             </span>
-            <span class="pip moved">{{ budget.movementUsed }} / {{ budget.speed }} ft</span>
+            <span class="pip movement" :class="{ spent: movementSpent }">
+                {{ budget.movementUsed }} / {{ movementTotal }} ft{{ budget.speedBonus ? " (dash)" : "" }}
+            </span>
         </div>
 
         <div v-if="isDm" class="controls">
@@ -262,21 +302,50 @@ onMounted(() => void turnBudgetSystem.load());
         gap: 0.25rem;
     }
 
+    // One colour per resource, so which one is gone reads at projector distance
+    // without anybody parsing four short words. The label still says which is
+    // which, so the colour is redundant rather than load-bearing -- it has to
+    // be, or the bar would be useless to a colour-blind player.
+    //
+    // Available: filled in the resource's colour. Spent: grey outline. That way
+    // "what do I still have?" is answered by what is *bright*, which is the
+    // question actually being asked at the table.
     .pip {
-        padding: 0.15rem 0.4rem;
-        border: solid 1px rgba(255, 255, 255, 0.35);
+        padding: 0.15rem 0.45rem;
+        border: solid 1px transparent;
         border-radius: 999px;
-        background: none;
-        color: inherit;
         font-size: 0.65rem;
+        font-weight: 700;
         white-space: nowrap;
+        color: #14141a;
+
+        &.action {
+            background-color: #3ddc84;
+        }
+
+        &.bonus {
+            background-color: #ffb74d;
+        }
+
+        &.reaction {
+            background-color: #64b5f6;
+        }
+
+        &.movement {
+            background-color: #c2a5f6;
+        }
 
         &.spent {
-            opacity: 0.35;
+            background-color: transparent;
+            border-color: rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.45);
+            font-weight: 400;
             text-decoration: line-through;
         }
 
-        &.moved {
+        // The movement pip counts up rather than switching off, so striking it
+        // through while it still has feet left would be a lie.
+        &.movement.spent {
             text-decoration: none;
         }
     }

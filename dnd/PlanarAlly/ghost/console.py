@@ -16,13 +16,19 @@ without a good reason.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from typing import Awaitable, Callable
 
 from aiohttp import web
 
+from . import lore
+from . import nlguard
+from . import undo as undo_mod
 from .actions import Outcome, Pending, execute
 from .client import GhostClient
+from .sheet import read_sheet as sheet_read
 from .commands import Action, ParseError, parse
 
 log = logging.getLogger(__name__)
@@ -243,6 +249,36 @@ setInterval(refresh, 4000);
 """
 
 
+# Bookkeeping verbs get no colour. A beat after "whose turn" is a non-sequitur,
+# and one after "targeting freak" delays the confirmation somebody is waiting on.
+# Commands that can change the board, and are therefore worth snapshotting
+# before they run. Everything else -- measuring, asking whose turn it is, the
+# story -- costs two DataBlock reads for nothing.
+_UNDOABLE = {
+    Action.ATTACK, Action.OPPORTUNITY, Action.CAST, Action.HEAL, Action.CONDITION,
+    Action.AC_MODIFIER, Action.USE_ITEM, Action.MOVE, Action.MOVE_DIR, Action.RETREAT,
+    Action.JUMP, Action.DASH, Action.CONTEST, Action.DEATH_SAVE,
+}
+
+_UNCOLOURED = {
+    Action.HELP,
+    Action.WHOSE_TURN,
+    Action.TARGET,
+    Action.CLEAR_TARGET,
+    Action.PROLOGUE,
+    Action.STORY_RESET,
+    Action.CONFIRM,
+    Action.CANCEL,
+    Action.NEXT_TURN,
+    Action.PREV_TURN,
+    Action.RESUME,
+    Action.SET_ROUND,
+    Action.ROLL_INITIATIVE,
+    Action.CLEAR_INITIATIVE,
+    Action.END_COMBAT,
+}
+
+
 class Console:
     def __init__(
         self,
@@ -261,17 +297,151 @@ class Console:
         # An action held back on a yes/no. Single-slot on purpose: a queue
         # of pending questions is a way to answer the wrong one.
         self._pending: Pending | None = None
+        # Who the party is aiming at, so "i cast ice knife" does not have to say
+        # it again. Cleared when the turn moves on -- a target is a within-turn
+        # convenience, and a stale one silently sending a spell at the wrong
+        # creature is exactly the failure the name guard exists to prevent.
+        self._focus: str | None = None
+        # Whose turn it was when the focus was set, so it can be dropped when
+        # the turn moves regardless of *how* it moved -- the browser advancing
+        # it never reaches this process as a command.
+        self._focus_turn: str | None = None
+        # One step, not a stack: "undo undo undo" as a way of rewinding a fight
+        # is a different feature with different failure modes.
+        self._undo: undo_mod.Snapshot | None = None
         self.log: list[dict] = []
         self._seq = 0
+        # Strong references to in-flight narration tasks. asyncio only holds a
+        # weak one, so without this a mid-sentence task can be garbage collected
+        # and the ghost falls silent for no visible reason.
+        self._speaking: set[asyncio.Task] = set()
         # Let the client push its own observations into this log.
         client.on_narration = self._note
+        # The ghost runs everything the players do not. Set here rather than in
+        # the client so the monster's command goes through `handle` and picks up
+        # the narration, the story beats, the action economy and the undo
+        # snapshot exactly as a spoken one would.
+        client.after_turn = self._schedule_monster_turn
+        self.dm_auto = os.getenv("GHOST_DM_AUTO", "1").strip().lower() not in {"0", "false", "no"}
+        self._dm_busy = False
+        # Strong references, for the reason the narration set exists: asyncio
+        # only holds a weak one, and a collected task is a monster that stood
+        # there doing nothing for no visible reason.
+        self._monster_turns: set[asyncio.Task] = set()
+
+    def _active_name(self) -> str | None:
+        """Whose turn it is, or None when nobody is in initiative.
+
+        The initiative cache rather than the `pa-turnbudget` block: the cache is
+        fed by the server's own `Initiative.Set` broadcast, so it is correct with
+        no browser open and costs no round trip, and out of combat it is empty --
+        which `wrong_turn` reads as "anyone may do anything".
+        """
+        from . import initiative  # noqa: PLC0415 - circular at import time
+
+        current = self.client.state.initiative.current
+        return initiative._name(self.client, current) if current else None
 
     async def handle(self, text: str, source: str = "text") -> Outcome:
-        """Parse and run one command. The voice pipeline calls this too."""
+        """Parse and run one command. The voice pipeline calls this too.
+
+        Anything that is not already valid syntax is handed to the cluster to be
+        translated, so the panel on the board accepts "back the elf off to the
+        southwest" as readily as the exact command. Exact syntax never reaches
+        the cluster: it parses locally in microseconds, and a two-second round
+        trip to be told what we already knew would make the common path the slow
+        one.
+        """
+        original = text
         try:
             intent = parse(text)
-        except ParseError as e:
-            return self._record(text, source, None, Outcome(False, [str(e)]))
+        except ParseError as first_error:
+            translated = await self._translate(original, source)
+            if translated is not None:
+                return translated
+            return self._record(text, source, None, Outcome(False, [str(first_error)]))
+
+        # Parsing is not the same as making sense. The grammar is deliberately
+        # permissive about names -- it has to be, it does not know who is on the
+        # board -- so "back the elf off from the hamster, head southwest" parses
+        # happily into a retreat by a character called "back elf off from
+        # hamster,". That used to fail with a baffling not-found error while the
+        # translator, which would have got it right, was never consulted. If the
+        # names do not resolve, treat it as prose rather than as a command.
+        if source.endswith("+nl") is False and self._unresolved(intent):
+            translated = await self._translate(original, source)
+            if translated is not None:
+                return translated
+
+        # Turn ownership, checked here rather than on the translated path
+        # alone. It used to live in `_translate`, which meant it only ever fired
+        # on prose: "back the elf off" was refused because it is gentelman's
+        # turn, while the exact command "elf moves away from hamster" parsed
+        # locally and sailed straight past. Same request, opposite answers,
+        # depending on nothing the player could see -- which is how it came to
+        # look like the elf was stuck.
+        active = self._active_name()
+
+        # A standing target belongs to the turn it was set in. Checked against
+        # the live active character rather than cleared by the `next turn`
+        # command, because the DM clicking the turn bar never reaches this
+        # process -- and a focus that outlived its turn would silently aim the
+        # next spell at last round's enemy.
+        if self._focus is not None and active != self._focus_turn:
+            self._focus = None
+            self._focus_turn = None
+
+        clash = nlguard.wrong_turn(intent.action.value, intent.actor, active)
+        if clash:
+            return self._record(text, source, intent, Outcome(False, [clash]))
+
+        if intent.action is Action.RESUME:
+            return self._record(text, source, intent, await self._resume())
+
+        if intent.action is Action.DM_AUTO:
+            self.dm_auto = intent.condition_on
+            return self._record(
+                text, source, intent,
+                Outcome(True, [
+                    "The ghost is running the monsters." if self.dm_auto
+                    else "The monsters are yours to run."
+                ]),
+            )
+
+        if intent.action is Action.UNDO:
+            held_undo, self._undo = self._undo, None
+            if held_undo is None:
+                return self._record(
+                    text, source, intent,
+                    Outcome(False, ["There is nothing to undo."]),
+                )
+            return self._record(
+                text, source, intent,
+                Outcome(True, await undo_mod.restore(self.client, held_undo)),
+            )
+
+        if intent.action is Action.TARGET:
+            found = self.client.state.find_shape(intent.target or "")
+            if found is None:
+                return self._record(
+                    text, source, intent,
+                    Outcome(False, [f"I can't find anyone called {intent.target!r}."]),
+                )
+            from . import initiative  # noqa: PLC0415 - circular at import time
+
+            self._focus = initiative._name(self.client, found)
+            self._focus_turn = active
+            return self._record(
+                text, source, intent,
+                Outcome(True, [f"Targeting {self._focus}. Say 'clear target' to stop."]),
+            )
+
+        if intent.action is Action.CLEAR_TARGET:
+            was, self._focus = self._focus, None
+            return self._record(
+                text, source, intent,
+                Outcome(True, [f"No longer targeting {was}." if was else "There was no target set."]),
+            )
 
         # A yes/no only means something while a question is open, and it
         # answers *that* question -- it is never a command in its own right.
@@ -280,11 +450,34 @@ class Console:
         if intent.action in (Action.CONFIRM, Action.CANCEL):
             if held is None:
                 return self._record(text, source, intent, Outcome(False, ["Nothing to confirm."]))
+
+            # Either answer ends the question, so either answer clears its
+            # marker. A highlight left behind outlives the thing it was asking
+            # about and turns into scenery nobody can account for.
+            await self._clear_markers(held)
+
+            # A question that carries its own resolution answers *both* ways
+            # through the same closure: a Shield offer declined still has an
+            # attack to finish landing, so "no" is not "do nothing" here.
+            if held.on_answer is not None:
+                outcome = await held.on_answer(intent.action is Action.CONFIRM)
+                self._pending = outcome.pending
+                if self.narrator is not None and outcome.lines:
+                    task = asyncio.create_task(self._narrate(outcome.text))
+                    self._speaking.add(task)
+                    task.add_done_callback(self._speaking.discard)
+                return self._record(text, source, held.intent, outcome)
+
             if intent.action is Action.CANCEL:
                 return self._record(
                     text, source, intent,
                     Outcome(True, [f"Held. {held.question} -- not doing it."]),
                 )
+
+            if held.move_to:
+                return self._record(text, source, held.then or held.intent,
+                                    await self._walk_then_act(held))
+
             intent, accept = held.intent, True
 
         log.info("command: %s -> %s", text, intent)
@@ -299,20 +492,73 @@ class Console:
                 Outcome(False, ["Lost the connection to PlanarAlly and could not get it back."]),
             )
 
+        # Snapshot before, not after: the point is the state the command is
+        # about to replace. Taken even when the command goes on to fail, because
+        # a partially applied failure -- a slot spent before the target turned
+        # out to be missing -- is exactly the case worth being able to take back.
+        if intent.action in _UNDOABLE:
+            subjects = [
+                self.client.state.find_shape(n or "")
+                for n in (intent.actor, intent.target or self._focus)
+            ]
+            self._undo = await undo_mod.capture(
+                self.client, [u for u in subjects if u], intent.raw or text
+            )
+
         try:
-            outcome = await execute(self.client, intent, accept_hazard=accept)
+            outcome = await execute(
+                self.client, intent, accept_hazard=accept, focus=self._focus
+            )
         except Exception as e:  # noqa: BLE001 - a bad command must not kill the console
             log.exception("command failed")
             return self._record(text, source, intent, Outcome(False, [f"That went wrong: {e}"]))
 
         self._pending = outcome.pending
 
-        if self.narrator is not None and outcome.lines:
+        # Ending a turn hands the whole enemy stretch to the ghost at once. The
+        # table has one human running the party and nobody running the hostiles,
+        # so "end turn" should not stop on the first goblin -- it plays every
+        # monster in a row and comes to rest on the next party member, which is
+        # the moment the human needs to act. Only when the ghost is running the
+        # monsters, and only if the next creature actually is one.
+        if intent.action is Action.NEXT_TURN and self.dm_auto and not self._dm_busy:
+            from . import dmturn  # noqa: PLC0415 - circular at import time
+
+            if await dmturn.controlled(self.client, self.client.state.initiative.current):
+                chain = await self._resume()
+                outcome.lines.extend(chain.lines)
+                outcome.pending = outcome.pending or chain.pending
+                self._pending = outcome.pending
+
+        # A line of character colour, at most one every few commands and only
+        # when something actually happened. Appended to the outcome rather than
+        # narrated separately so it arrives in the same breath as the result --
+        # a beat spoken on its own sounds like the ghost changing the subject.
+        if outcome.ok and intent.action not in _UNCOLOURED:
             try:
-                await self.narrator(outcome.text)
-            except Exception:  # noqa: BLE001 - narration is not worth failing over
-                log.exception("narration failed")
+                colour = await lore.beat(self.client, intent.actor, intent.action.value)
+            except Exception:  # noqa: BLE001 - never fail a command for flavour
+                log.exception("could not pick a story beat")
+                colour = None
+            if colour:
+                outcome.say(colour)
+
+        if self.narrator is not None and outcome.lines:
+            # Fire and forget. Awaiting this held the HTTP response open until
+            # the ghost had finished *speaking* -- thirty-odd seconds for a four
+            # line combat result -- so the panel sat spinning and the voice loop
+            # could not start listening again until the sentence it was already
+            # hearing had finished. The Narrator serialises internally, so
+            # overlapping results queue rather than talk over each other.
+            self._speaking.add(task := asyncio.create_task(self._narrate(outcome.text)))
+            task.add_done_callback(self._speaking.discard)
         return self._record(text, source, intent, outcome)
+
+    async def _narrate(self, text: str) -> None:
+        try:
+            await self.narrator(text)
+        except Exception:  # noqa: BLE001 - narration is not worth failing over
+            log.exception("narration failed")
 
     async def _ensure_connected(self) -> bool:
         if self.client.sio.connected:
@@ -328,6 +574,287 @@ class Console:
             return False
         log.info("reconnected")
         return True
+
+    async def _on_pending(self, _request: web.Request) -> web.Response:
+        """Whether the *ghost* is holding a question, and what it is.
+
+        The distinction matters upstream. The translator also asks questions,
+        and a "yes" that answers one of those is not a confirmation of anything
+        the ghost is holding -- it arrives here as `Action.CONFIRM` and is
+        rejected with "Nothing to confirm", which reads to the table like the
+        game ignored them.
+        """
+        held = self._pending
+        return web.json_response({
+            "awaiting": held is not None,
+            "question": held.question if held else None,
+        })
+
+    async def _on_marks(self, _request: web.Request) -> web.Response:
+        """What transient decoration is on the board and how long it has left.
+
+        Diagnostic. Temporary shapes are never written to the database and are
+        not replayed to a client that connects later, so this registry is the
+        only way to check them without looking at the board.
+        """
+        from . import ephemera
+
+        return web.json_response({
+            "marks": [
+                {"kind": m.kind, "label": m.label, "turnsLeft": m.turns_left, "shapes": len(m.uuids)}
+                for m in ephemera.tracked()
+            ]
+        })
+
+    async def _on_actions(self, request: web.Request) -> web.Response:
+        """What one character can do, for the in-game action panel."""
+        from . import actionbook
+
+        name = request.query.get("character", "")
+        if not name:
+            return web.json_response(
+                {"characters": sorted(self.client.state.characters)}
+            )
+        try:
+            return web.json_response(await actionbook.for_character(self.client, name))
+        except Exception as exc:  # noqa: BLE001
+            log.exception("could not build the action list")
+            return web.json_response({"error": str(exc)}, status=503)
+
+    async def _on_state(self, request: web.Request) -> web.Response:
+        """The board as facts, for whatever is writing the commands.
+
+        Serves both shapes: `?format=text` returns the table meant to be pasted
+        into a prompt, and the default JSON is for anything that wants to do its
+        own thing with it. The text form is the point -- it exists so the model
+        stops having to invent distances.
+        """
+        from . import worldstate
+
+        try:
+            state = await worldstate.snapshot(self.client)
+        except Exception as exc:  # noqa: BLE001 - a broken snapshot must not 500 the console
+            log.exception("could not build world state")
+            return web.json_response({"error": str(exc)}, status=503)
+
+        if request.query.get("format") == "text":
+            return web.Response(text=worldstate.render(state), content_type="text/plain")
+        return web.json_response(state)
+
+    async def _clear_markers(self, held: Pending) -> None:
+        if not held.marker_uuids:
+            return
+        from . import scene
+
+        try:
+            # Drawn temporary, so it has to be removed temporary; otherwise the
+            # call is a no-op and the highlight stays on the board.
+            await scene.clear_shapes(self.client, held.marker_uuids, temporary=True)
+        except Exception:  # noqa: BLE001 - a stuck marker is not worth losing the answer
+            log.exception("could not clear the suggestion marker")
+
+    async def _walk_then_act(self, held: Pending) -> Outcome:
+        """Accepting a counter-proposal: go there, then do the thing.
+
+        Re-planned rather than replayed. The route was worked out when the
+        question was asked, and between then and now somebody may have moved
+        into it -- walking a stale path would shove a token through whoever
+        arrived. Asking again for the same destination costs one search and
+        cannot walk through anybody.
+        """
+        from .actions import _build_field, execute
+        from .movement import plan_direction  # noqa: F401 - kept for symmetry
+        from . import suggest
+
+        actor, target = held.actor_uuid, held.target_uuid
+        field = await _build_field(self.client)
+
+        sheet_data = await sheet_read(self.client, actor)
+        speed = float((sheet_data or {}).get("speed") or 30)
+        spot = suggest.spot_with_sight(
+            field, actor, target, field.cells_for_speed(speed), await self._sides()
+        )
+        if spot is None:
+            return Outcome(False, ["That spot is no longer available."])
+
+        from .movement import MovePlan, StopReason, walk
+
+        await walk(self.client, field, actor, MovePlan(spot.path, StopReason.ARRIVED, reached=True))
+        moved = Outcome(True, [f"Moved {spot.feet} feet into position."])
+
+        follow = held.then or held.intent
+        try:
+            after = await execute(self.client, follow)
+        except Exception as e:  # noqa: BLE001
+            log.exception("follow-up action failed")
+            return moved.say(f"Then it went wrong: {e}")
+
+        for line in after.lines:
+            moved.say(line)
+        moved.ok = after.ok
+        self._pending = after.pending
+        return moved
+
+    async def _sides(self) -> dict[str, str]:
+        from . import worldstate
+
+        factions = await worldstate._factions(self.client)
+        return {u: worldstate._side(factions, u) for u in self.client.state.shapes}
+
+    def _unresolved(self, intent) -> bool:
+        """True when the intent names somebody who is not on the board."""
+        for name in (intent.actor, intent.target):
+            if name and self.client.state.find_shape(name) is None:
+                return True
+        return False
+
+    async def _translate(self, said: str, source: str) -> Outcome | None:
+        """Try the cluster. None means "no translation available, report the parse error".
+
+        Every gate that can refuse runs *before* execution, and in this order:
+        the model may only answer on one of two channels, the command must name
+        people the player actually said, and -- the strongest of the three --
+        whoever is acting must be whoever's turn it is. The turn check settles
+        what string matching only guesses at: when the order says it is the
+        elf's turn, an attack by the hamster is wrong however confidently it was
+        produced.
+        """
+        # Local imports: translate reaches into actions, which imports this
+        # module, so a top-level import would close the loop.
+        from . import translate as nl
+
+        if nl.cluster_url() is None:
+            return None
+        if not await self._ensure_connected():
+            return None
+
+        result = await nl.translate(self.client, said)
+        channel, payload = result["channel"], result["payload"]
+
+        if channel == "error":
+            log.warning("translation failed: %s", payload)
+            return None
+        if channel == "ask":
+            return self._record(said, source, None, Outcome(True, [f"[?] {payload}"]))
+        if channel == "untagged":
+            return self._record(
+                said, source, None,
+                Outcome(False, [f"I did not understand that. The model said: {payload[:120]}"]),
+            )
+
+        characters = list(self.client.state.characters)
+        refusal = nl.vet_names(payload, said, characters)
+        if refusal:
+            return self._record(said, source, None, Outcome(False, [refusal]))
+
+        try:
+            intent = parse(payload)
+        except ParseError as e:
+            return self._record(said, source, None, Outcome(False, [f"{payload!r}: {e}"]))
+
+        log.info("translated %r -> %r", said, payload)
+        outcome = await self.handle(payload, f"{source}+nl")
+        # Show what it was understood as, or a surprising result is impossible
+        # to tell apart from a mistranslation. `_record` copies the lines when
+        # it builds the entry, so the log has to be amended as well -- mutating
+        # only the returned Outcome left the panel showing a result with no
+        # sign of what produced it.
+        echo = f"[{payload}]"
+        outcome.lines.insert(0, echo)
+        if self.log:
+            self.log[-1]["lines"] = list(outcome.lines)
+            self.log[-1]["command"] = said
+        return outcome
+
+    async def _schedule_monster_turn(self) -> None:
+        """Run the monster's turn detached from whatever advanced the turn.
+
+        Two reasons, both learned the hard way. The hook fires *inside* the
+        `next turn` command, so doing the work inline logged the monster's
+        action before the turn change that caused it -- the panel read as though
+        the goblin had acted early. And it held the HTTP response open for the
+        cluster round trip, which is the same mistake narration made: the voice
+        loop cannot start listening again while a request is still open.
+        """
+        task = asyncio.create_task(self._take_monster_turn())
+        self._monster_turns.add(task)
+        task.add_done_callback(self._monster_turns.discard)
+
+    async def _take_monster_turn(self) -> None:
+        """If the creature now up is not a player's, play it.
+
+        Guarded against re-entry: a monster's command can advance the turn
+        itself, and without the flag a party of six goblins would recurse
+        through the whole round in one call stack.
+        """
+        from . import dmturn  # noqa: PLC0415 - circular at import time
+
+        if not self.dm_auto or self._dm_busy:
+            return
+        active = self.client.state.initiative.current
+        if not await dmturn.controlled(self.client, active):
+            return
+
+        self._dm_busy = True
+        try:
+            await asyncio.sleep(0)
+            name = dmturn._name_of(self.client, active) or "it"
+            choices = await dmturn.options(self.client, active)
+            command, why = await dmturn.choose(self.client, active, choices)
+            if command is None:
+                await self._note(f"{name} does nothing -- {why}.")
+                return
+            log.info("dm turn: %s (%s of %d options, %s)", command, why, len(choices), name)
+            await self.handle(command, "dm")
+        except Exception:  # noqa: BLE001
+            log.exception("could not take a monster turn")
+        finally:
+            self._dm_busy = False
+
+    async def _resume(self) -> "Outcome":
+        """Play every monster turn from here until it is a player's, then stop.
+
+        The table has one human running the party and nobody running the
+        hostiles, so “resume” hands the ghost the whole stretch of enemy turns in
+        one go. It plays each creature the ghost controls, advances the tracker,
+        and repeats -- stopping the instant a player character (or nobody) is up,
+        which is the moment the human needs to act.
+
+        Bounded to two rounds of turns so a table that is somehow all-monster
+        cannot spin forever; in practice it stops at the first party member.
+        """
+        from . import dmturn, initiative  # noqa: PLC0415 - circular at import time
+
+        init = self.client.state.initiative
+        if not init.order or not init.is_active:
+            return Outcome(True, ["Combat isn't running, so there's nothing to resume."])
+
+        # Block the turn-change hook for the duration: the ghost does not hear
+        # its own advances, but a stray one must not double-drive a creature.
+        self._dm_busy = True
+        lines: list[str] = []
+        try:
+            for _ in range(2 * max(1, len(init.order))):
+                active = init.current
+                if not await dmturn.controlled(self.client, active):
+                    who = dmturn._name_of(self.client, active) or "your character"
+                    lines.append(f"Over to you — it's {who}'s turn.")
+                    break
+                name = dmturn._name_of(self.client, active) or "it"
+                choices = await dmturn.options(self.client, active)
+                command, why = await dmturn.choose(self.client, active, choices)
+                if command is None:
+                    lines.append(f"{name} does nothing — {why}.")
+                else:
+                    log.info("resume: %s (%s)", command, name)
+                    outcome = await self.handle(command, "dm")
+                    lines.extend(outcome.lines)
+                lines.extend(await initiative.advance(self.client, forward=True))
+            else:
+                lines.append("Stopped after two rounds — nobody on the party's side is up.")
+        finally:
+            self._dm_busy = False
+        return Outcome(True, lines)
 
     async def _note(self, text: str) -> None:
         """Log something the ghost noticed rather than something it was told.
@@ -400,6 +927,10 @@ class Console:
         app.router.add_post("/command", self._on_command)
         app.router.add_get("/log", lambda _r: web.json_response({"entries": self.log}))
         app.router.add_get("/characters", lambda _r: web.json_response({"characters": list(self.client.state.characters)}))
+        app.router.add_get("/state", self._on_state)
+        app.router.add_get("/actions", self._on_actions)
+        app.router.add_get("/marks", self._on_marks)
+        app.router.add_get("/pending", self._on_pending)
 
         self._runner = web.AppRunner(app)
         await self._runner.setup()

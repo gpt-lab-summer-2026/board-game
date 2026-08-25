@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -40,8 +41,18 @@ class Narrator:
             await asyncio.to_thread(self._speaker.speak, text)
 
 
-def try_build(voice: str = "af_heart") -> Narrator | None:
-    """A Narrator, or None if the voice stack isn't available here."""
+def try_build(voice: str = "af_bella") -> Narrator | None:
+    """A Narrator, or None if the voice stack isn't available here.
+
+    `GHOST_MUTE=1` returns None deliberately. The voice loop in ../python
+    narrates its own results too, so with both running every outcome is read out
+    twice, over itself. That file is not ours to edit, so this is the lever from
+    this side: mute the ghost and let the voice loop be the single narrator.
+    The console and the action panel then go quiet, which is the cost.
+    """
+    if os.environ.get("GHOST_MUTE", "").strip().lower() in {"1", "true", "yes"}:
+        log.info("GHOST_MUTE set; the console will stay silent")
+        return None
     if str(VOICE_ROOT) not in sys.path:
         sys.path.insert(0, str(VOICE_ROOT))
     try:

@@ -35,9 +35,33 @@ export interface TurnBudget {
      * wrong when it isn't.
      */
     speed: number;
+    /**
+     * Extra feet granted this turn, by Dash and nothing else so far.
+     *
+     * Separate from `speed` because it is not a property of the creature, and
+     * separate from a negative `movementUsed` because that is clamped at zero --
+     * which is why crediting Dash as negative spending silently did nothing
+     * whenever the creature had not moved yet. Cleared by `syncToTurn`.
+     */
+    speedBonus: number;
 
     /** Shape -> the round in which it last spent its reaction. */
     reactions: Record<GlobalId, number>;
+    /**
+     * What each creature has already spent this round, so that revisiting a
+     * turn does not hand it a fresh action.
+     *
+     * Without this, stepping back one turn and forward again reset the budget:
+     * `syncToTurn` blanks on any change to (round, turn, active), and going
+     * back and forth is two such changes. That is a free action, a free bonus
+     * action and a full move for anyone who says "previous turn, next turn" --
+     * which the ghost made trivially easy to say out loud.
+     *
+     * Keyed by shape and stamped with the round it belongs to; an entry from an
+     * earlier round is ignored rather than restored, so a genuinely new round
+     * still starts clean.
+     */
+    spent: Record<GlobalId, { round: number; action: boolean; bonus: boolean; movementUsed: number; speedBonus: number }>;
 }
 
 export type BudgetKind = "action" | "bonus";
@@ -52,6 +76,8 @@ export function defaultTurnBudget(): TurnBudget {
         bonus: false,
         movementUsed: 0,
         speed: 30,
+        speedBonus: 0,
         reactions: {},
+        spent: {},
     };
 }

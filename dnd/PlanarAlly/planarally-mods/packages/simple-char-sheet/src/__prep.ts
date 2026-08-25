@@ -1,0 +1,10 @@
+import { readFileSync } from "node:fs";
+import { emptySheet, type CharacterSheet } from "./data";
+import { deriveSheet, reconcileSlots, spellSlotsFor } from "./rules";
+import { catalogue, findClass } from "./catalogue";
+const input = JSON.parse(readFileSync(0, "utf8")) as { sheet: CharacterSheet; cat: unknown };
+(catalogue as { value: unknown }).value = input.cat;
+const sheet: CharacterSheet = { ...emptySheet(), ...input.sheet };
+sheet.slots = reconcileSlots(sheet.slots, spellSlotsFor(findClass(sheet.classId), sheet.level));
+sheet.derived = deriveSheet(sheet);
+console.log(JSON.stringify(sheet));

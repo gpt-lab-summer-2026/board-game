@@ -163,6 +163,37 @@ export interface Spell {
     text: string;
 }
 
+/**
+ * Something a character carries and can use up.
+ *
+ * Separate from weapons and armour because the defining property is the
+ * *charge*: a potion that has been drunk is gone, and the interesting state is
+ * how many are left rather than what its statistics are.
+ */
+export type ItemKind = "potion" | "grenade" | "utility";
+
+export interface Item {
+    id: string;
+    name: string;
+    kind: ItemKind;
+    /** Healing dice; the drinker's ability modifier is NOT added. */
+    healing?: string;
+    /** Damage dice for a thrown item. */
+    damage?: string;
+    damageType?: string;
+    /** Thrown range in feet. */
+    range?: number;
+    /** Radius in feet for anything that goes off in an area. */
+    area?: number;
+    /** Ability the target rolls to avoid it, if any. */
+    save?: AbilityKey;
+    /** A condition it inflicts on everything caught in it. */
+    applies?: { condition: string; save?: AbilityKey };
+    /** Costs a bonus action rather than an action. */
+    bonusAction?: boolean;
+    text: string;
+}
+
 export interface Condition {
     id: string;
     name: string;
@@ -209,8 +240,10 @@ export interface ClassDef extends Trait {
  * v7 added armour and shields, so AC derives from gear and Dexterity instead
  *    of being a number somebody typed.
  * v8 added levelled spells and slots for wizard and cleric.
+ * v9 added consumable items: potions, grenades and utility drops.
+ * v10 added Ice Knife.
  */
-export const CATALOGUE_VERSION = 8;
+export const CATALOGUE_VERSION = 10;
 
 // A `type`, not an `interface` -- see the note on CharacterSheet in data.ts.
 export type Catalogue = {
@@ -222,6 +255,7 @@ export type Catalogue = {
     classes: ClassDef[];
     cantrips: Cantrip[];
     spells: Spell[];
+    items: Item[];
     conditions: Condition[];
 };
 
@@ -293,6 +327,39 @@ export function defaultCatalogue(): Catalogue {
             // For animal companions and monsters: a statline with no gear.
             { id: "beast", name: "Beast", hitDie: 10, primaryAbility: "str", savingThrows: ["str", "con"], passive: { name: "Keen Smell", text: "Advantage on Wisdom (Perception) checks that rely on smell. Fights with natural weapons and carries no equipment." }, level2: { name: "Pack Tactics", text: "Advantage on an attack if an ally is within 5 feet of the target." } },
         ],
+        items: [
+            {
+                id: "healing-potion", name: "Potion of Healing", kind: "potion",
+                healing: "2d4+2",
+                text: "Restores 2d4+2 hit points. Drinking one takes an action; the roll gets no ability modifier.",
+            },
+            {
+                id: "greater-healing-potion", name: "Potion of Greater Healing", kind: "potion",
+                healing: "4d4+4",
+                text: "Restores 4d4+4 hit points.",
+            },
+            {
+                id: "smokepowder-bomb", name: "Smokepowder Bomb", kind: "grenade",
+                damage: "3d6", damageType: "fire", range: 60, area: 10, save: "dex",
+                text: "Thrown. Everything within 10 feet makes a Dexterity save, taking 3d6 fire on a failure and half on a success.",
+            },
+            {
+                id: "smoke-flask", name: "Smoke Flask", kind: "grenade",
+                range: 40, area: 15, applies: { condition: "blinded" },
+                text: "Bursts into a 15 foot cloud. Anything inside is blinded until it leaves.",
+            },
+            {
+                id: "alchemists-fire", name: "Alchemist's Fire", kind: "grenade",
+                damage: "1d4", damageType: "fire", range: 20, save: "dex",
+                applies: { condition: "bleeding", save: "dex" },
+                text: "A ranged attack. On a hit the target burns for 1d4 at the start of each of its turns until someone puts it out.",
+            },
+            {
+                id: "caltrops", name: "Caltrops", kind: "utility",
+                range: 10, area: 5, save: "dex", applies: { condition: "slowed", save: "dex" },
+                text: "Scattered over a 5 foot square. Anything entering makes a Dexterity save or has its speed cut until it is healed.",
+            },
+        ],
         conditions: [
             { id: "bleeding", name: "Bleeding", short: "BLD", text: "Takes 1d4 damage at the start of each of its turns until someone spends an action to staunch it." },
             { id: "slowed", name: "Slowed", short: "SLOW", text: "Speed reduced by 10 feet until the end of the attacker's next turn." },
@@ -329,6 +396,12 @@ export function defaultCatalogue(): Catalogue {
                 id: "chromatic-orb", name: "Chromatic Orb", level: 1, classes: ["wizard"], kind: "attack",
                 damage: "3d8", damageType: "chosen", range: "90",
                 text: "A hurled orb of one chosen energy type: acid, cold, fire, lightning, poison or thunder.",
+            },
+            {
+                id: "ice-knife", name: "Ice Knife", level: 1, classes: ["wizard"], kind: "save",
+                damage: "2d6", damageType: "cold", range: "60", save: "dex",
+                area: { shape: "sphere", size: 5 },
+                text: "A shard of ice strikes one creature for 1d10 piercing, then bursts: everything within 5 feet makes a Dexterity save against 2d6 cold.",
             },
             {
                 id: "shield-spell", name: "Shield", level: 1, classes: ["wizard"], kind: "buff",
@@ -397,7 +470,16 @@ async function load(): Promise<DataBlock<Catalogue> | undefined> {
     );
     if (dataBlock !== undefined) {
         block = dataBlock;
-        if (migrate(dataBlock.reactiveData.value)) dataBlock.sync();
+        if (!dataBlock.existsOnServer) {
+            // A brand-new catalogue is created locally only, and `migrate` has
+            // nothing to do to freshly minted defaults -- so nothing ever
+            // triggered a write and the row was never created. The ghost, which
+            // reads this over the socket, then saw a campaign with no weapons,
+            // no conditions and no items however many times the tab was opened.
+            dataBlock.sync();
+        } else if (migrate(dataBlock.reactiveData.value)) {
+            dataBlock.sync();
+        }
         current.value = dataBlock.reactiveData.value;
         watch(dataBlock.reactiveData, (value) => {
             if (migrate(value)) dataBlock.sync();
@@ -420,20 +502,29 @@ function migrate(cat: Catalogue): boolean {
     if ((cat.version ?? 1) >= CATALOGUE_VERSION) return false;
     const defaults = defaultCatalogue();
 
-    cat.weapons ??= [];
-    cat.armour ??= [];
-    cat.races ??= [];
-    cat.backgrounds ??= [];
-    cat.classes ??= [];
-    cat.cantrips ??= [];
-    cat.spells ??= [];
-    cat.conditions ??= [];
+    // An *absent* key means the catalogue predates that content, so it gets the
+    // defaults. An empty array means the DM deleted everything in it, and that
+    // stays deleted -- which is why this is `??=` on the defaults rather than a
+    // length check. Races and backgrounds have no `addMissing` pass below, on
+    // purpose: they are the two lists a DM is most likely to curate wholesale,
+    // so re-adding individual entries would fight them. Without this line a
+    // catalogue that never had the key would simply have none.
+    cat.weapons ??= defaults.weapons;
+    cat.armour ??= defaults.armour;
+    cat.races ??= defaults.races;
+    cat.backgrounds ??= defaults.backgrounds;
+    cat.classes ??= defaults.classes;
+    cat.cantrips ??= defaults.cantrips;
+    cat.spells ??= defaults.spells;
+    cat.items ??= defaults.items;
+    cat.conditions ??= defaults.conditions;
 
     addMissing(cat.weapons, defaults.weapons);
     addMissing(cat.armour, defaults.armour);
     addMissing(cat.classes, defaults.classes);
     addMissing(cat.cantrips, defaults.cantrips);
     addMissing(cat.spells, defaults.spells);
+    addMissing(cat.items, defaults.items);
     addMissing(cat.conditions, defaults.conditions);
 
     // v1 shipped Wizard and Cleric without a spellcasting ability, so cantrips
@@ -466,6 +557,10 @@ export function saveCatalogue(): void {
 
 export function findWeapon(id: string | null): Weapon | undefined {
     return id === null ? undefined : current.value.weapons.find((w) => w.id === id);
+}
+
+export function findItem(id: string | null): Item | undefined {
+    return id === null ? undefined : current.value.items.find((i) => i.id === id);
 }
 
 export function findSpell(id: string | null): Spell | undefined {

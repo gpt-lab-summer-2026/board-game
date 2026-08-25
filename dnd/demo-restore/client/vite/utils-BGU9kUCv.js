@@ -1,0 +1,1 @@
+import{M as e,u as t}from"./index-CTLD_PkI.js";async function n(n){e.setLoading(!0),await t.push(`/game/${encodeURIComponent(n.creator)}/${encodeURIComponent(n.name)}`)}export{n as t};

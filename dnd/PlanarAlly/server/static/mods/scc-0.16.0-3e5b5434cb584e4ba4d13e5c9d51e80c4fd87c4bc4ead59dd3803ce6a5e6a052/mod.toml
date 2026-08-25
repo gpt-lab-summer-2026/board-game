@@ -1,0 +1,45 @@
+[mod]
+apiSchema = "0.1.0"
+tag = "scc"
+name = "Simple Character Sheet"
+version = "0.16.0"
+author = "PlanarAlly"
+shortDescription = "A character editor for PlanarAlly"
+
+description = """
+Adds a Character tab to shapes marked as characters: abilities, race,
+background, class, equipped weapons, derived melee and ranged attacks, hit
+points, armour class and a description, plus the token's own name, size and
+flags.
+
+Creatures are supported alongside adventurers: a Beast class and natural
+weapons (claws, bite, hooves) for characters that carry no gear.
+
+Wizards and clerics get levelled spells and first-level slots: five each,
+covering an attack roll, a saving throw with an area, an automatic hit, healing
+and a buff. Casting from the ghost spends a slot and refuses when the pool is
+empty. Skills, saving throws and contested checks (grapple, shove, disarm) are
+all rolled from the sheet's own numbers.
+
+Consumables are carried with counts: healing potions, thrown bombs and utility
+drops. Using one from the ghost spends a charge, rolls any save the item allows
+and catches everything inside its burst, not only what it was aimed at.
+
+Cantrips follow the ranged weapon rules -- an attack roll against AC, damage
+that scales with level, and disadvantage while a hostile creature is within
+5 feet. Attack rows carry ready-made advantage and disadvantage notation.
+
+Armour class derives from equipped armour, a shield and Dexterity, with each
+weight's Dexterity cap applied -- light passes the whole modifier, medium stops
+at +2, heavy passes none. A hand-typed override is still available for monsters
+written as a bare number, and temporary modifiers (cover, a spell, a blessing)
+are listed separately with an optional duration in rounds.
+
+HP and AC are mirrored onto real PlanarAlly trackers, so they render on the
+token and can be changed from outside the sheet.
+
+Weapons, races, backgrounds and classes come from a campaign-wide catalogue that
+can be edited at runtime. A sheet can also be saved as a named preset and loaded
+onto any other character; unlike PA's shape templates, presets are not tied to
+the asset they were made from.
+"""

@@ -98,6 +98,26 @@ _HEX_NEIGHBOURS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
 _SQUARE_NEIGHBOURS = ((1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1))
 
 
+def cell_anchor(cell: Cell, grid: GridType) -> tuple[float, float]:
+    """Where a one-cell shape's x/y must be for it to sit on `cell`.
+
+    PlanarAlly stores a shape's position as its top-left corner, not its centre,
+    and `battlefield._covered_cells` reads it back that way -- adding half a grid
+    square to find the middle. Anything that writes a position therefore has to
+    write the corner, or it lands half a cell off.
+
+    On a square grid that error was invisible: half a square from a square's
+    centre still floors into the same square. On hex it is not, because half a
+    grid square from a hex's centre is inside the *next* hex. Every token the
+    ghost moved read back exactly one cell away from where it had been put,
+    which made repeated "moves to" appear to stall two cells short of its
+    target while the pathfinder was working perfectly.
+    """
+    cx, cy = cell_center(cell, grid)
+    half = DEFAULT_GRID_SIZE / 2
+    return cx - half, cy - half
+
+
 def neighbours(cell: Cell, grid: GridType) -> list[Cell]:
     offsets = _SQUARE_NEIGHBOURS if grid is GridType.SQUARE else _HEX_NEIGHBOURS
     return [Cell(cell.q + dq, cell.r + dr) for dq, dr in offsets]

@@ -161,6 +161,12 @@ export const SKILLS = [
 
 export type SkillKey = (typeof SKILLS)[number]["key"];
 
+/** A carried item and how many are left. */
+export interface CarriedItem {
+    id: string;
+    quantity: number;
+}
+
 /** One level of spell slots. */
 export interface SlotLevel {
     used: number;
@@ -254,6 +260,11 @@ export type CharacterSheet = {
     /** Skill keys this character is proficient in. */
     skillProficiencies: string[];
     /**
+     * Consumables, with counts. A list rather than a map because the editor
+     * renders it in order and a map's key order is not something to rely on.
+     */
+    inventory: CarriedItem[];
+    /**
      * Which ability powers this character's spells. Null means "use the
      * class's", which is the usual case; setting it explicitly is what lets a
      * creature with no caster class still cast something.
@@ -291,6 +302,7 @@ export function emptySheet(): CharacterSheet {
         spells: [],
         slots: {},
         skillProficiencies: [],
+        inventory: [],
         spellAbility: null,
         trackerIds: { hp: null, ac: null },
         derived: {

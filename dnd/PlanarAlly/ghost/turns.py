@@ -51,7 +51,9 @@ def _blank() -> dict[str, Any]:
         "bonus": False,
         "movementUsed": 0,
         "speed": 30,
+        "speedBonus": 0,
         "reactions": {},
+        "spent": {},
     }
 
 
@@ -69,6 +71,107 @@ async def active_shape(client: GhostClient) -> str | None:
     return (await read_budget(client)).get("active")
 
 
+async def clear_spent(client: GhostClient) -> None:
+    """Forget who has spent what, actions and reactions alike.
+
+    Needed whenever the round *numbering* changes rather than the round itself.
+    Both stores stamp entries with a round number -- the action bank explicitly,
+    reactions by recording the round one was used in -- so renumbering makes
+    last fight's round 1 indistinguishable from this one's.
+
+    It bit twice before it was understood: a goblin woke with its action already
+    gone, and then a wizard was refused Shield because it had reacted in a round
+    that used to carry the same number. Clearing one and not the other is why
+    the second one took a while to see.
+    """
+    data = await read_budget(client)
+    if not data.get("spent") and not data.get("reactions"):
+        return
+    data["spent"] = {}
+    data["reactions"] = {}
+    await write_budget(client, data)
+
+
+async def sync_to_turn(client: GhostClient, round_: int, turn: int, active: str | None) -> None:
+    """Reset the action economy because the turn has moved on.
+
+    A port of the browser's `turnBudgetSystem.syncToTurn`. Both writers are
+    idempotent on the same `(round, turn, active)` tuple, so an open DM tab and
+    a headless ghost can do this at the same time without fighting.
+
+    This is what makes `spend` and `spend_movement` work at all when nobody has
+    a browser open: both refuse to book anything against a creature that is not
+    the block's `active`, and until now `active` was written *only* by the
+    browser. A ghost-only table therefore had an action economy that silently
+    never recorded anything.
+    """
+    data = await read_budget(client)
+    if data.get("round") == round_ and data.get("turn") == turn and data.get("active") == active:
+        return
+
+    # Bank the outgoing creature's spends, then give the incoming one back
+    # whatever it had already spent *this round*. Blanking unconditionally --
+    # which this used to do, faithfully copying the browser -- meant "previous
+    # turn, next turn" refunded a whole turn's action economy. Two commands the
+    # ghost had just made trivial to say out loud.
+    spent = dict(data.get("spent") or {})
+    was = data.get("active")
+    if was is not None:
+        spent[was] = {
+            "round": int(data.get("round") or 0),
+            "action": bool(data.get("action")),
+            "bonus": bool(data.get("bonus")),
+            "movementUsed": int(data.get("movementUsed") or 0),
+            "speedBonus": int(data.get("speedBonus") or 0),
+        }
+    restored = spent.get(active) if active is not None else None
+    # An entry from an earlier round is history, not a carry-over: a genuinely
+    # new round has to start clean.
+    carry = bool(restored) and int(restored.get("round", -1)) == round_
+
+    reactions = dict(data.get("reactions") or {})
+    # Reactions refresh at the start of the creature's *own* turn, not whenever
+    # any turn ends -- and not when it is merely revisiting a turn it has
+    # already taken, or stepping back and forward would refund that too.
+    if active is not None and not carry:
+        reactions.pop(active, None)
+
+    data.update({
+        "round": round_,
+        "turn": turn,
+        "active": active,
+        "action": bool(restored["action"]) if carry else False,
+        "bonus": bool(restored["bonus"]) if carry else False,
+        "movementUsed": int(restored["movementUsed"]) if carry else 0,
+        "speedBonus": int(restored["speedBonus"]) if carry else 0,
+        "spent": spent,
+        "reactions": reactions,
+    })
+    await write_budget(client, data)
+
+
+def _bank(data: dict[str, Any]) -> dict[str, Any]:
+    """Mirror the active creature's live spends into `spent`.
+
+    Every writer calls this, because banking only on the way out of a turn is
+    one moment too late -- a spend made after the last sync would depend on
+    nothing else having overwritten the block first.
+    """
+    active = data.get("active")
+    if active is None:
+        return data
+    spent = dict(data.get("spent") or {})
+    spent[active] = {
+        "round": int(data.get("round") or 0),
+        "action": bool(data.get("action")),
+        "bonus": bool(data.get("bonus")),
+        "movementUsed": int(data.get("movementUsed") or 0),
+        "speedBonus": int(data.get("speedBonus") or 0),
+    }
+    data["spent"] = spent
+    return data
+
+
 async def spend_movement(client: GhostClient, shape: str, feet: int, speed: int | None = None) -> None:
     """Book movement against the turn budget, if it is this creature's turn.
 
@@ -79,10 +182,66 @@ async def spend_movement(client: GhostClient, shape: str, feet: int, speed: int 
     data = await read_budget(client)
     if data.get("active") != shape:
         return
-    data["movementUsed"] = max(0, int(data.get("movementUsed") or 0) + max(0, feet))
+    # Only the outer clamp, matching the browser's `spendMovement`. The inner
+    # `max(0, feet)` this used to have was a mistranslation that silently
+    # discarded every negative amount -- which is to say, every correction.
+    data["movementUsed"] = max(0, int(data.get("movementUsed") or 0) + int(feet))
     if speed is not None:
         data["speed"] = speed
-    await write_budget(client, data)
+    await write_budget(client, _bank(data))
+
+
+async def grant_speed(client: GhostClient, shape: str, feet: int) -> None:
+    """Add to this turn's movement allowance, as Dash does.
+
+    Separate from `spend_movement` because the two are not opposites. Spending
+    is clamped at zero -- "moved -30 of 30" is not a thing -- so a Dash credited
+    as negative spending vanished whenever the creature had not moved yet, which
+    is the usual case. It has to raise the ceiling, not lower the floor.
+    """
+    data = await read_budget(client)
+    if data.get("active") != shape:
+        return
+    data["speedBonus"] = max(0, int(data.get("speedBonus") or 0) + int(feet))
+    await write_budget(client, _bank(data))
+
+
+async def remaining_movement(client: GhostClient, shape: str, speed: float) -> float:
+    """Feet this creature may still move, or its full speed if it is not its turn.
+
+    The out-of-turn case is deliberate and matches `spend_movement`: the ghost is
+    routinely asked to walk a monster around outside initiative, and metering
+    that against a budget being displayed for somebody else would be wrong.
+
+    Until now nothing called this, which is the whole bug: the counter went up
+    and up while every mover kept budgeting from the sheet's full speed, so a
+    creature with 30 feet of speed could move 30 feet per command, all turn.
+    """
+    data = await read_budget(client)
+    if data.get("active") != shape:
+        return speed
+    allowance = speed + float(data.get("speedBonus") or 0)
+    return max(0.0, allowance - float(data.get("movementUsed") or 0))
+
+
+async def has(client: GhostClient, shape: str, kind: str) -> bool:
+    """Is this part of the economy still available?
+
+    Read-only, so a caller can refuse *before* rolling. `spend` would answer the
+    same question, but answering it by spending means a command that then fails
+    for an unrelated reason has already eaten the action -- and a public dice
+    toast has already gone out for an attack that is about to be refused.
+
+    True for anyone who is not the active creature, matching `spend`: the ghost
+    is routinely asked to run a monster outside initiative, and metering that
+    against a budget displayed for somebody else would be wrong.
+    """
+    if kind not in ("action", "bonus"):
+        raise ValueError(f"not part of the action economy: {kind}")
+    data = await read_budget(client)
+    if data.get("active") != shape:
+        return True
+    return not data.get(kind)
 
 
 async def spend(client: GhostClient, shape: str, kind: str) -> bool:
@@ -95,7 +254,7 @@ async def spend(client: GhostClient, shape: str, kind: str) -> bool:
     if data.get(kind):
         return False
     data[kind] = True
-    await write_budget(client, data)
+    await write_budget(client, _bank(data))
     return True
 
 
