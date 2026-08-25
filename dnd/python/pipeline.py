@@ -17,13 +17,13 @@ import os
 import sys
 
 from config import ASK_PREFIX, CMD_PREFIX, CLUSTER_CHAT, SYSTEM_PROMPT_NARRATION
-from ghost_client import getReq, post_to_cluster
+from ghost_client import getReq, ghost_pending, post_to_cluster
 import guard
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(SCRIPT_DIR, "..", "PlanarAlly", "ghost"))
 
-from commands import ClarificationNeeded, ParseError, parse  # noqa: E402
+from commands import Action, ClarificationNeeded, ParseError, parse  # noqa: E402
 
 NARRATION_MODEL = "qwen3.6:latest"
 
@@ -41,6 +41,24 @@ def route(reply: str) -> tuple[str, str]:
     if text.upper().startswith(CMD_PREFIX.upper()):
         return "cmd", text[len(CMD_PREFIX):].strip()
     return "untagged", text
+
+
+# What the player has said since the last command actually executed. A single
+# utterance is the wrong thing to check names against: "casts magic missile" is
+# the answer to "ice knife or magic missile?", and the elf and the weirdo were
+# named a turn earlier. Cleared when a command posts, so names never leak from
+# one completed action into the next.
+_said_window: list[str] = []
+
+
+def _accumulated(said: str) -> str:
+    said = (said or "").strip()
+    if said and (not _said_window or _said_window[-1] != said):
+        _said_window.append(said)
+    # A short tail is enough for one clarification exchange and keeps a long
+    # session from making the guard match against everything ever said.
+    del _said_window[:-4]
+    return " ".join(_said_window)
 
 
 def vet(reply: str, said: str, characters: list[str] | None = None) -> tuple[str, str]:
@@ -62,16 +80,28 @@ def vet(reply: str, said: str, characters: list[str] | None = None) -> tuple[str
     if channel == "untagged":
         return "retry", "I didn't catch that, say it again?"
 
-    ok, why = guard.check(payload, said, characters if characters is not None else getReq())
+    context = _accumulated(said)
+    ok, why = guard.check(payload, context, characters if characters is not None else getReq())
     if not ok:
         return "say", why
 
     try:
-        parse(payload)
+        intent = parse(payload)
     except ClarificationNeeded as e:
         return "say", e.question
     except ParseError as e:
         return "retry", str(e)
+
+    # A yes/no only means something while the *ghost* is holding a question.
+    # The translator asks questions too, and the model cannot tell the two
+    # apart: in a real transcript it asked "What does freak do next?", heard
+    # "Next turn", read that as an affirmative, and sent `yes` -- which came
+    # back as "Nothing to confirm" and looked to the table like a dropped turn.
+    # Whose question it was is knowable, so it should not be guessed at.
+    if intent.action in (Action.CONFIRM, Action.CANCEL) and not ghost_pending():
+        return "retry", "There is nothing to answer yes or no to. What should happen?"
+
+    _said_window.clear()
     return "post", payload
 
 

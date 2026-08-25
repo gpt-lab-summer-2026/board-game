@@ -55,7 +55,7 @@ def record_audio():
     global AUDIO_DATA
     AUDIO_DATA = []
     try:
-        with sd.InputStream(samplerate=FS, channels=1, dtype="int16", device=AUDIO_DEVICE, callback=callback, latency="high") as stream:
+        with sd.InputStream(samplerate=FS, channels=1, dtype="int16", device=mic_device(), callback=callback, latency="high") as stream:
             print("listening for wake word")
             noWakeWord = True
             window = np.array([], dtype="int16")
@@ -78,6 +78,13 @@ def record_audio():
                 if speech_timestamps:
                     print("timestamps: ", speech_timestamps)
                     if detect_wake_word(audio=audio, timestamps=speech_timestamps):
+                        # Only wake on a player's turn. While the ghost is running
+                        # the monsters the human has nothing to do, so the wake
+                        # word is ignored until the tracker comes back round to a
+                        # party member -- no "how can I help?" over the enemy turns.
+                        if not player_turn():
+                            print("wake word heard, but it's not a player's turn -- ignoring")
+                            continue
                         print("wake word detected!")
                         # stop capturing while the prompt plays: speak() blocks for
                         # seconds, which overflows the mic buffer, and whatever it
@@ -146,6 +153,14 @@ def build_initial_prompt():
 def transcribe():
     # transcribe the audio currently written to REC_PATH
     print("transcribing")
+    # The cluster first when AUDIO_GATEWAY is set: distil-whisper large-v3 on a
+    # GPU is both faster than distil-small.en here and more accurate, and the
+    # transcript errors we have been chasing were mishearings, not misparses.
+    # Returns None whenever it cannot be done there, and MODEL stays loaded
+    # below precisely so that fallback costs nothing but the time to run it.
+    remote = transcribe_remote(REC_PATH)
+    if remote is not None:
+        return remote
     segments, _ = MODEL.transcribe(
         REC_PATH,
         condition_on_previous_text=False,
@@ -165,7 +180,7 @@ def detect_wake_word(audio, timestamps, wake_word=WAKE_WORD):
         for start in range(0, len(speech) - FRAME_SIZE + 1, FRAME_SIZE):
             frame = speech[start:start + FRAME_SIZE]
             prediction = WAKEWORD_MODEL.predict(frame)
-            if prediction[wake_word] > 0.5:
+            if prediction[wake_word] > 0.4:
                 return True
     return False
 

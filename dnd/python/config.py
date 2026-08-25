@@ -54,7 +54,11 @@ Rules:
   in the table: a caster with a cantrip and no real weapon means the cantrip, a
   character with only a bow means ranged. If the table shows both and the
   distance makes either sensible, ask which.
-- If the player is answering a yes/no question, output {CMD_PREFIX} yes or {CMD_PREFIX} no.
+- Yes and no answer a question **the game** asked, which you will see in the
+  history as a Result line ending in a question. They never answer a question
+  you asked yourself: after your own {ASK_PREFIX}, the player is telling you what
+  they want, so translate it as a fresh command. If what they say does not
+  match a command, ask again rather than guessing.
 
 When to ask instead of command:
 - Several characters match what the player said. Name the candidates using a
@@ -89,6 +93,10 @@ You: {CMD_PREFIX} yes
 
 Player: "shoot it"
 You: {ASK_PREFIX} Which character is shooting, and at what?
+
+You asked: "What does freak do next?"  Player: "next turn"
+You: {CMD_PREFIX} next turn
+(not yes -- they are answering with an instruction, not agreeing to anything)
 
 Player: "elf just attacks"
 You: {ASK_PREFIX} Attacks whom?

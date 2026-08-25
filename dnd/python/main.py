@@ -124,19 +124,21 @@ def main():
         print(res_move)
 
         # The ghost is holding a question of its own -- a hazard to accept, or a
-        # better place to stand that it has already drawn on the board. It is
-        # phrased for a person, so read it out as it stands and let the next
-        # utterance answer it: vet() maps "yeah, go on" to a plain yes.
+        # better place to stand that it has already drawn on the board. It reads
+        # that question out itself, so nothing is spoken here; we only need to
+        # stop and let the next utterance answer it, which vet() maps from
+        # "yeah, go on" to a plain yes.
         if entry.get("awaiting"):
-            speak(res_move)
             continue
 
-        # What actually happened, before narrating it. Without this the narrator
-        # only ever sees the request and describes that instead of the result.
+        # What actually happened. Without this the model only ever sees the
+        # request and answers about that instead of about the result.
         history.append({"role": "user", "content": f"Result: {res_move}"})
-        narration = narrate(res_move, llm=None if CLUSTER_CHAT else llm)
-        print(narration)
-        speak(narration)
+        # Not spoken here. The ghost narrates every outcome it produces --
+        # including the ones that arrive from this loop -- and it also covers the
+        # in-game console and the action panel, which this loop never sees. Two
+        # narrators meant every result read out twice, overlapping. Set
+        # GHOST_MUTE=1 on the ghost to move the voice back to this side.
 
 if __name__=="__main__":
     main()
