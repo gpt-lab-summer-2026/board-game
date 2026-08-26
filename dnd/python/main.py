@@ -55,7 +55,6 @@ def llama_chat_narration(history):
     print(response["choices"][0]["message"]["content"])
     return(response["choices"][0]["message"]["content"])
 
-
 def cluster_chat(history):
     cluster_url = os.getenv('cluster_url')
     trimmed_history = history[-MAX_HISTORY:]
@@ -77,7 +76,6 @@ def cluster_chat(history):
         return(content)
     except Exception as e:
         print("Error: ", e)
-
 
 def main():
     #

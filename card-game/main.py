@@ -3,6 +3,8 @@ import json
 import rapidfuzz as fuzz
 import random
 import threading
+from dotenv import load_dotenv
+import requests
 
 from llama_cpp import Llama
 
@@ -11,35 +13,66 @@ from speak import *
 from camera import *
 from config import *
 
+load_dotenv()
+
 llm = Llama(
     model_path="../models/gemma-3-4b-it-q4_k_m.gguf",
     n_ctx= 2000,
     n_gpu_layers=-1,  # offload all layers to Metal, at least works in mac
 )
 
+def build_system_prompt(black_card, pick_number, player_cards):
+    return [
+        {"role": "system", "content": (
+            "You are the dealer in a game of Cards Against Humanity. "
+            "The black card has one or more blanks, shown as underscores ('_'). "
+            "Each player has submitted white card(s) to fill those blanks. "
+            "Pick the funniest submission, give some reasoning for why it's the funniest and announce a runner-up "
+            "Give every card secret points based on shock, accuracy, narrative but do not tell these points."
+            "Exclaim your short and funny reasoning casually and less verbose, as if youre chatting with good friends and without fear. Do not explain the joke."
+            "Reply in plain spoken text only - no markdown, no asterisks, no bullet points or headers."
+        )},
+        {"role": "user", "content": (
+            f"Black card: {black_card}\n"
+            f"Number of blanks to fill: {pick_number}\n"
+            f"Player submissions (each item is one player's card, or cards if more than one blank): {player_cards}\n\n"
+            "Reply with exactly two short parts:\n"
+            "1. The black card text with the blank(s) filled in using the winning player's card(s).\n"
+            "2. One or two easy, short sentences on why it's the funniest - be conversational, not stiff."
+        )},
+    ]
+
 def llama_chat(black_card, pick_number, player_cards):
     print("thinking")
     response = llm.create_chat_completion(
-        messages= [
-            {"role": "system", "content": (
-                "You are the dealer in a game of Cards Against Humanity. "
-                "The black card has one or more blanks, shown as underscores ('_'). "
-                "Each player has submitted white card(s) to fill those blanks. "
-                "Pick the funniest submission, then talk about it casually and naturally, "
-                "like you're chatting with friends after a round, not writing a formal review."
-            )},
-            {"role": "user", "content": (
-                f"Black card: {black_card}\n"
-                f"Number of blanks to fill: {pick_number}\n"
-                f"Player submissions (each item is one player's card, or cards if more than one blank): {player_cards}\n\n"
-                "Reply with exactly two short parts:\n"
-                "1. The black card text with the blank(s) filled in using the winning player's card(s).\n"
-                "2. One or two easy, natural sentences on why it's the funniest — casual and conversational, not stiff."
-            )},
-        ],
+        messages= build_system_prompt(black_card, pick_number, player_cards),
         max_tokens = 200,
     )
     return(response["choices"][0]["message"]["content"])
+
+def cluster_chat(black_card, pick_number, player_cards):
+    cluster_url = os.getenv('cluster_url')
+    message = {
+        "model": "qwen3.6:latest",
+        "stream": False,
+        "think": False,
+        "options": {"num_ctx": 30000, "temperature": 0.2},
+        "messages": build_system_prompt(black_card, pick_number, player_cards)
+    }
+
+    try:
+        res = requests.post(cluster_url, json=message).json() # post to cluster, res in json
+    except Exception as e:
+        print("Cluster request failed: ", e)
+        return f"Cluster error: {e}"
+
+    if "message" not in res:
+        print("Unexpected cluster response: ", res)
+        return f"Cluster error: {res.get('error', res)}"
+
+    return res["message"]["content"]
+
+
 
 def load_cards():
     with open(CARDS_JSON_PATH) as f:
@@ -62,6 +95,7 @@ def process_text(text):
     # lowercase the input text, that was deteted from the card
     text = text.lower()
     text = ' '.join(text.split()) #remove extra empty spaces etc
+    text =  '.'.join(text.split())
 
     # WRatio (the default scorer) blends in partial-ratio matching, which ties many
     # unrelated cards at a high score for short/noisy OCR text; plain ratio doesn't.
@@ -81,8 +115,27 @@ def main():
         if key == ord('q'):
             break
         black_card_text, pick_number = get_black_card() # get the black card
-        print("Black card is: ", black_card_text)
-        speak(f"Black card is {black_card_text}")
+        print("Black card is: ", {black_card_text})
+        new_txt ={black_card_text.replace("_", "blank")}
+        print(new_txt)
+        speak(f"Black card is: {new_txt}")
+
+        # let the user skip this black card before starting the round
+        skip_card = False
+        while True:
+            ret, frame = cam.read()
+            draw_instructions(frame, [
+                f"Black card is: {black_card_text}",
+                "Press 's' to skip this card, or any other key to continue"
+            ])
+            cv2.imshow(WINDOW_NAME, frame)
+            key = cv2.waitKey(1)
+            if key != -1:
+                skip_card = key == ord('s')
+                break
+        if skip_card:
+            continue
+
         cards = [] # all the player's cards for this round
         player = 0
         while player < player_amount: # loop for program adding cards for that turn
@@ -109,8 +162,15 @@ def main():
         result = {}
         def run_llama_chat():
             result["response"] = llama_chat(black_card=black_card_text, pick_number=pick_number, player_cards=cards)
-        thread = threading.Thread(target=run_llama_chat, daemon=True)
-        thread.start()
+        def run_cluster_chat():
+            result["response"] = cluster_chat(black_card=black_card_text, pick_number=pick_number, player_cards=cards)
+
+        if CLUSTER_CHAT == True:   
+            thread = threading.Thread(target=run_cluster_chat, daemon=True)
+            thread.start()
+        else:
+            thread = threading.Thread(target=run_llama_chat, daemon=True)
+            thread.start()
 
         while thread.is_alive():
             ret, frame = cam.read()
