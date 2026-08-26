@@ -1,0 +1,34 @@
+{"t": 0.001, "kind": "run_start", "rounds": 1, "turns": 0, "dry": false, "gateway": "http://127.0.0.1:9000", "voice": "af_aoede", "ghost": "http://127.0.0.1:8770", "cluster": "http://gpu-farmi-004.rd.tuni.fi:11434/api/chat", "flavour": true}
+{"t": 0.065, "kind": "info", "text": "The monsters are yours to run."}
+{"t": 0.065, "kind": "command", "command": "dm auto off", "ok": true, "ms": 1, "lines": ["The monsters are yours to run."]}
+{"t": 0.065, "kind": "reset_start"}
+{"t": 0.179, "kind": "info", "text": "The party takes a long rest: hit points, spell slots and rages are back."}
+{"t": 0.179, "kind": "info", "text": "cat 0 to 10, freak 2 to 13."}
+{"t": 0.179, "kind": "command", "command": "long rest", "ok": true, "ms": 113, "lines": ["The party takes a long rest: hit points, spell slots and rages are back.", "cat 0 to 10, freak 2 to 13."]}
+{"t": 0.237, "kind": "info", "text": "elf is now at 65,-44."}
+{"t": 0.237, "kind": "command", "command": "teleport elf to 65,-44", "ok": true, "ms": 12, "lines": ["elf is now at 65,-44."]}
+{"t": 0.269, "kind": "info", "text": "emo is now at 63,-43."}
+{"t": 0.269, "kind": "command", "command": "teleport emo to 63,-43", "ok": true, "ms": 31, "lines": ["emo is now at 63,-43."]}
+{"t": 0.297, "kind": "info", "text": "cat is now at 64,-42."}
+{"t": 0.297, "kind": "command", "command": "teleport cat to 64,-42", "ok": true, "ms": 27, "lines": ["cat is now at 64,-42."]}
+{"t": 0.319, "kind": "info", "text": "freak is now at 57,-41."}
+{"t": 0.319, "kind": "command", "command": "teleport freak to 57,-41", "ok": true, "ms": 21, "lines": ["freak is now at 57,-41."]}
+{"t": 0.338, "kind": "info", "text": "gentelman is now at 59,-41."}
+{"t": 0.339, "kind": "command", "command": "teleport gentelman to 59,-41", "ok": true, "ms": 19, "lines": ["gentelman is now at 59,-41."]}
+{"t": 0.357, "kind": "info", "text": "weirdo is now at 61,-42."}
+{"t": 0.357, "kind": "command", "command": "teleport weirdo to 61,-42", "ok": true, "ms": 18, "lines": ["weirdo is now at 61,-42."]}
+{"t": 0.372, "kind": "info", "text": "hamster is now at 67,-43."}
+{"t": 0.372, "kind": "command", "command": "teleport hamster to 67,-43", "ok": true, "ms": 14, "lines": ["hamster is now at 67,-43."]}
+{"t": 0.429, "kind": "reset_done"}
+{"t": 0.43, "kind": "say", "text": "roll initiative"}
+{"t": 1.613, "kind": "say_synth", "text": "roll initiative", "synth_ms": 1183, "seconds": 1.6}
+{"t": 4.39, "kind": "fault", "code": "SPEAKER_CONTENDED", "detail": "waited 2764ms for the speaker; something else was talking", "blocked_ms": 2764}
+{"t": 6.829, "kind": "speech", "owner": "ghost", "start": 0.0, "end": 6.83, "seconds": 6.83}
+{"t": 7.332, "kind": "info", "text": "Initiative: cat 18, hamster 15, gentelman 12, elf 12, emo 10, weirdo 9, freak 3."}
+{"t": 7.332, "kind": "info", "text": "cat is up first."}
+{"t": 7.332, "kind": "command", "command": "roll initiative", "ok": true, "ms": 549, "lines": ["Initiative: cat 18, hamster 15, gentelman 12, elf 12, emo 10, weirdo 9, freak 3.", "cat is up first."]}
+{"t": 9.004, "kind": "fault", "code": "INTERRUPTED", "detail": "stopped by hand"}
+{"t": 9.013, "kind": "info", "text": "The ghost is running the monsters."}
+{"t": 9.013, "kind": "command", "command": "dm auto on", "ok": true, "ms": 8, "lines": ["The ghost is running the monsters."]}
+{"t": 9.013, "kind": "speech_totals", "autoplay": 0, "ghost": 6.8, "segments": 1}
+{"t": 9.013, "kind": "summary", "counts": {"SPEAKER_CONTENDED": 1, "INTERRUPTED": 1}}

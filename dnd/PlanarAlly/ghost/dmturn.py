@@ -36,7 +36,10 @@ log = logging.getLogger(__name__)
 # The disposition the players hold. Everything else is the ghost's to run.
 PLAYER_SIDE = "party"
 
-MODEL = os.getenv("GHOST_DM_MODEL", os.getenv("GHOST_MODEL", "llama3.3:70b"))
+# Same reasoning as translate.DEFAULT_MODEL: the 70b no longer fits on the
+# shared GPUs and fails with CUDA OOM, so a monster turn that asked for it hit
+# the local fallback every time and the model was never really choosing.
+MODEL = os.getenv("GHOST_DM_MODEL", os.getenv("GHOST_MODEL", "qwen3.6:latest"))
 TIMEOUT = float(os.getenv("GHOST_DM_TIMEOUT", "60"))
 
 # How many options to put in front of the model. Enumerating every spell against

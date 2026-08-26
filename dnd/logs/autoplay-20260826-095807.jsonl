@@ -1,0 +1,4 @@
+{"t": 0.001, "kind": "run_start", "rounds": 1, "turns": 0, "dry": false, "gateway": "http://127.0.0.1:9000", "voice": "af_aoede", "ghost": "http://127.0.0.1:8770", "cluster": "http://gpu-farmi-004.rd.tuni.fi:11434/api/chat", "flavour": true}
+{"t": 0.02, "kind": "fault", "code": "GHOST_STATE_UNREADABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 0.02, "kind": "fault", "code": "GHOST_DOWN", "detail": "no ghost on http://127.0.0.1:8770; start it first"}
+{"t": 0.021, "kind": "summary", "counts": {"GHOST_STATE_UNREADABLE": 1, "GHOST_DOWN": 1}}

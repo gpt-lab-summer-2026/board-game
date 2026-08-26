@@ -28,7 +28,7 @@ MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
 MODEL_PATH = os.path.join(MODEL_DIR, "kokoro-v1.0.onnx")
 VOICES_PATH = os.path.join(MODEL_DIR, "voices-v1.0.bin")
 
-DEFAULT_VOICE = "af_bella"
+DEFAULT_VOICE = "af_aoede"
 
 # Silence played before the first word. A Bluetooth speaker's A2DP link takes a
 # few hundred milliseconds to wake, and anything sent during that window is
@@ -54,6 +54,29 @@ def lead_in_ms() -> int:
     if time.monotonic() - _last_spoken > IDLE_SECONDS:
         return max(LEAD_IN_MS, LEAD_IN_COLD_MS)
     return LEAD_IN_MS
+
+
+# Level of the lead-in noise, 0..1. Silence does not wake a cheap Bluetooth
+# amp -- it gates on signal, not on the link -- so the pad has to carry a
+# little energy. ~0.004 is about -48 dBFS: inaudible in a room, plenty for an
+# amp's detector. Override with GHOST_TTS_LEAD_LEVEL; 0 restores true silence
+# for a wired output that does not need waking.
+LEAD_IN_LEVEL = float(os.getenv("GHOST_TTS_LEAD_LEVEL", "0.004"))
+
+
+def _lead_in_pad(rate: int, ms: int):
+    """`ms` of quiet-but-non-zero audio to put in front of the first word."""
+    import numpy as np  # noqa: PLC0415 - matches the lazy import below
+
+    frames = int(rate * ms / 1000)
+    if frames <= 0:
+        return None
+    if LEAD_IN_LEVEL <= 0:
+        return np.zeros(frames, dtype="float32")
+    # Noise rather than a tone: amp detectors are broadband, and noise cannot
+    # beat against the speech that follows it. Seeded, so runs are identical.
+    rng = np.random.default_rng(0)
+    return (rng.standard_normal(frames) * LEAD_IN_LEVEL).astype("float32")
 
 
 def _mark_spoken() -> None:
@@ -179,12 +202,19 @@ class KokoroSpeaker:
             self._audio_lock = _AudioLock()
             self._audio_lock.__enter__()
             try:
-                # The silence goes in front of the first clip's samples. A
+                # The lead-in goes in front of the first clip's samples. A
                 # separate write races the sink coming up, so the padding is
                 # exactly what gets dropped and the speech behind it is clipped
                 # anyway; making it part of the audio guarantees that whatever
                 # A2DP swallows on wake-up is the quiet part.
-                pad = np.zeros(int(rate * lead_in_ms() / 1000), dtype="float32")
+                #
+                # It must be NOISE, not zeros. A cheap Bluetooth amp gates on
+                # signal, not on the link being open: feed it digital silence
+                # and it stays powered down, wakes on the first real sample,
+                # and eats the syllable behind it -- which is the clipping this
+                # padding was supposed to prevent. Low-level noise keeps the
+                # amp on through the pad and is inaudible at this level.
+                pad = _lead_in_pad(rate, lead_in_ms())
                 clip = first
                 while clip is not None:
                     audio = np.asarray(clip[0], dtype="float32")

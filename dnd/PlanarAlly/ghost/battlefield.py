@@ -133,6 +133,73 @@ class Battlefield:
         return not any(cell in self.opaque for cell in self.cells_between(a, b))
 
 
+def _cells_along_edges(
+    vertices: list[Any], shape: dict[str, Any], grid: GridType
+) -> list[Cell]:
+    """The cells a polygon's outline passes through.
+
+    Vertices are absolute world coordinates in PlanarAlly, not offsets from the
+    shape's x/y -- verified against a wall whose final vertex equals its origin
+    exactly. Each edge is walked at half-cell steps, which is fine enough that
+    no cell on the line is skipped and coarse enough to stay cheap.
+
+    `open_polygon` distinguishes a wall drawn as a line from a closed shape; a
+    closed one gets its final edge back to the start, an open one does not.
+    """
+    import json
+
+    from .grid import DEFAULT_GRID_SIZE
+
+    # The server hands `vertices` over as a JSON *string*, not a list -- the
+    # same shape as the DataBlock payloads. Iterating it raw walks it one
+    # character at a time and finds no points at all.
+    if isinstance(vertices, str):
+        try:
+            vertices = json.loads(vertices)
+        except ValueError:
+            return []
+    if not isinstance(vertices, list):
+        return []
+
+    points: list[tuple[float, float]] = []
+    for v in vertices:
+        try:
+            if isinstance(v, dict):
+                points.append((float(v["x"]), float(v["y"])))
+            else:
+                points.append((float(v[0]), float(v[1])))
+        except (TypeError, ValueError, KeyError, IndexError):
+            continue
+    if len(points) < 2:
+        return []
+
+    edges = list(zip(points, points[1:]))
+    if not shape.get("open_polygon", True) and len(points) > 2:
+        edges.append((points[-1], points[0]))
+
+    # A quarter of a cell, not a half. On a hex grid a line passing close to a
+    # vertex can step straight over a hex at half-cell spacing, leaving a
+    # one-cell hole in a wall -- and a hole in a wall is a hole a flood fill
+    # (or a creature) walks through.
+    step = DEFAULT_GRID_SIZE / 4
+    cells: list[Cell] = []
+    seen: set[Cell] = set()
+    for (ax, ay), (bx, by) in edges:
+        span = max(abs(bx - ax), abs(by - ay))
+        steps = max(1, int(span / step))
+        for i in range(steps + 1):
+            t = i / steps
+            cell = cell_from_point(ax + (bx - ax) * t, ay + (by - ay) * t, grid)
+            if cell not in seen:
+                seen.add(cell)
+                cells.append(cell)
+                # The same ceiling the rectangle path uses: a pathological
+                # shape must not build a set with tens of thousands of entries.
+                if len(cells) >= MAX_TERRAIN_CELLS * MAX_TERRAIN_CELLS:
+                    return cells
+    return cells
+
+
 def _covered_cells(shape: dict[str, Any], grid: GridType, *, is_token: bool) -> list[Cell]:
     """Every cell a shape occupies.
 
@@ -151,6 +218,20 @@ def _covered_cells(shape: dict[str, Any], grid: GridType, *, is_token: bool) -> 
     x, y = float(shape.get("x", 0) or 0), float(shape.get("y", 0) or 0)
     size_x = int(shape.get("size_x") or shape.get("sizeX") or 0)
     size_y = int(shape.get("size_y") or shape.get("sizeY") or 0)
+
+    # A polygon is a drawn wall, and it has no width or height to read: its
+    # geometry is the vertex list, and `size_x`/`size_y` are 0. Falling through
+    # to the rectangle path below collapsed every wall the DM had drawn to the
+    # single cell at its origin -- five polygons outlining the whole map blocked
+    # five isolated hexes, so tokens walked through walls and shot through them.
+    # Rasterise the edges instead: a wall blocks the cells its line passes
+    # through, which is what both movement and vision need.
+    if not is_token:
+        vertices = shape.get("vertices") or shape.get("points")
+        if vertices:
+            rasterised = _cells_along_edges(vertices, shape, grid)
+            if rasterised:
+                return rasterised
 
     if is_token:
         # A gargantuan creature is 4x4. Anything beyond that is not a footprint,
@@ -213,7 +294,13 @@ def build(
             continue
 
         name = str(_get(shape, "name", default="") or "")
-        is_token = layer == "tokens"
+        # A polygon is drawn geometry -- a wall -- even when it sits on the
+        # tokens layer, which is where PlanarAlly puts one drawn with the
+        # polygon tool. Calling it a token had it clamped to a single cell
+        # *and* registered as a creature, so a wall outlining the whole map
+        # blocked one hex and showed up in the occupant list as "WALL".
+        kind = str(_get(shape, "type_", "type", default="") or "")
+        is_token = layer == "tokens" and kind != "polygon"
         cells = _covered_cells(shape, grid, is_token=is_token)
         if is_token:
             defeated = bool(_get(shape, "isDefeated", "is_defeated", default=False))

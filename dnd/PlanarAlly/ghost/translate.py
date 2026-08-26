@@ -27,11 +27,15 @@ from .commands import HELP_TEXT
 
 log = logging.getLogger(__name__)
 
-# The 70b, not the small model. Deciding what somebody meant is the one job in
-# this system where being wrong is silent -- a misread intent becomes a valid
-# command and executes -- and it is measurably no slower here: 0.5s warm against
-# 0.8s for qwen3.6, because the cluster keeps it resident.
-DEFAULT_MODEL = os.getenv("GHOST_MODEL", "llama3.3:70b")
+# qwen3.6, not the 70b. Deciding what somebody meant is the one job in this
+# system where being wrong is silent -- a misread intent becomes a valid command
+# and executes -- so this was the 70b on the grounds that it was no slower when
+# resident. It stopped being resident: the cluster's GPUs are shared, and 42 GB
+# of llama3.3 now answers "CUDA error: out of memory" rather than answering at
+# all, which took the whole voice path down with it. qwen3.6 is 24 GB, loads,
+# and reads these prompts correctly at ~1s warm -- including refusing to invent
+# a "goblin" that is not on the board. Override with GHOST_MODEL.
+DEFAULT_MODEL = os.getenv("GHOST_MODEL", "qwen3.6:latest")
 CMD_PREFIX = "CMD:"
 ASK_PREFIX = "ASK:"
 

@@ -454,7 +454,15 @@ async def set_ac_modifier(
     data = await read_sheet(client, shape)
     if data is None:
         return 0
-    mods = list(data.get("acModifiers") or [])
+    # One modifier per source, replaced rather than appended. Recasting Shield
+    # of Faith on a target that already has it is a re-application of the same
+    # spell, not a second one -- appending let AC climb by +2 every cast, with
+    # nothing ever taking the old entry off.
+    key = source.strip().lower()
+    mods = [
+        m for m in (data.get("acModifiers") or [])
+        if str(m.get("source") or "").strip().lower() != key
+    ]
     mods.append({
         "id": str(_uuid.uuid4()),
         "source": source,

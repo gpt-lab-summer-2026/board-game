@@ -1,0 +1,151 @@
+{"t": 0.001, "kind": "run_start", "rounds": 1, "turns": 0, "dry": false, "gateway": "http://127.0.0.1:9000", "voice": "af_aoede", "ghost": "http://127.0.0.1:8770", "cluster": "http://gpu-farmi-004.rd.tuni.fi:11434/api/chat", "flavour": true}
+{"t": 0.069, "kind": "info", "text": "The monsters are yours to run."}
+{"t": 0.069, "kind": "command", "command": "dm auto off", "ok": true, "ms": 1, "lines": ["The monsters are yours to run."]}
+{"t": 0.069, "kind": "reset_start"}
+{"t": 0.183, "kind": "info", "text": "The party takes a long rest: hit points, spell slots and rages are back."}
+{"t": 0.183, "kind": "info", "text": "cat 0 to 10."}
+{"t": 0.183, "kind": "command", "command": "long rest", "ok": true, "ms": 113, "lines": ["The party takes a long rest: hit points, spell slots and rages are back.", "cat 0 to 10."]}
+{"t": 0.309, "kind": "info", "text": "elf is now at 65,-44."}
+{"t": 0.309, "kind": "command", "command": "teleport elf to 65,-44", "ok": true, "ms": 40, "lines": ["elf is now at 65,-44."]}
+{"t": 0.345, "kind": "info", "text": "emo is now at 63,-43."}
+{"t": 0.345, "kind": "command", "command": "teleport emo to 63,-43", "ok": true, "ms": 34, "lines": ["emo is now at 63,-43."]}
+{"t": 0.377, "kind": "info", "text": "cat is now at 64,-42."}
+{"t": 0.377, "kind": "command", "command": "teleport cat to 64,-42", "ok": true, "ms": 32, "lines": ["cat is now at 64,-42."]}
+{"t": 0.402, "kind": "info", "text": "freak is now at 57,-41."}
+{"t": 0.402, "kind": "command", "command": "teleport freak to 57,-41", "ok": true, "ms": 24, "lines": ["freak is now at 57,-41."]}
+{"t": 0.435, "kind": "info", "text": "gentelman is now at 59,-41."}
+{"t": 0.435, "kind": "command", "command": "teleport gentelman to 59,-41", "ok": true, "ms": 32, "lines": ["gentelman is now at 59,-41."]}
+{"t": 0.462, "kind": "info", "text": "weirdo is now at 61,-42."}
+{"t": 0.462, "kind": "command", "command": "teleport weirdo to 61,-42", "ok": true, "ms": 26, "lines": ["weirdo is now at 61,-42."]}
+{"t": 0.489, "kind": "info", "text": "hamster is now at 67,-43."}
+{"t": 0.489, "kind": "command", "command": "teleport hamster to 67,-43", "ok": true, "ms": 27, "lines": ["hamster is now at 67,-43."]}
+{"t": 0.586, "kind": "reset_done"}
+{"t": 0.59, "kind": "say", "text": "roll initiative"}
+{"t": 2.183, "kind": "say_synth", "text": "roll initiative", "synth_ms": 1592, "seconds": 1.6}
+{"t": 4.642, "kind": "speech", "owner": "autoplay", "start": 2.22, "end": 4.64, "seconds": 2.42}
+{"t": 5.141, "kind": "info", "text": "Initiative: hamster 20, gentelman 16, weirdo 16, elf 12, emo 11, freak 7, cat 6."}
+{"t": 5.142, "kind": "info", "text": "hamster is up first."}
+{"t": 5.142, "kind": "command", "command": "roll initiative", "ok": true, "ms": 514, "lines": ["Initiative: hamster 20, gentelman 16, weirdo 16, elf 12, emo 11, freak 7, cat 6.", "hamster is up first."]}
+{"t": 17.793, "kind": "speech", "owner": "ghost", "start": 9.67, "end": 17.79, "seconds": 8.12}
+{"t": 18.426, "kind": "turn", "round": 1, "who": "hamster"}
+{"t": 18.534, "kind": "say", "text": "hamster attacks cat"}
+{"t": 19.953, "kind": "say_synth", "text": "hamster attacks cat", "synth_ms": 1419, "seconds": 1.85}
+{"t": 22.633, "kind": "speech", "owner": "autoplay", "start": 20.01, "end": 22.63, "seconds": 2.62}
+{"t": 23.687, "kind": "info", "text": "hamster moves 14 feet towards cat."}
+{"t": 23.69, "kind": "info", "text": "hamster attacks cat: 19 to hit [11] +8."}
+{"t": 23.69, "kind": "info", "text": "That hits AC 14 for 15 damage."}
+{"t": 23.69, "kind": "info", "text": "cat drops to 0 hit points and is dying. Death saves on their turn."}
+{"t": 23.69, "kind": "command", "command": "hamster attacks cat", "ok": true, "ms": 1088, "lines": ["hamster moves 14 feet towards cat.", "hamster attacks cat: 19 to hit [11] +8.", "That hits AC 14 for 15 damage.", "cat drops to 0 hit points and is dying. Death saves on their turn."]}
+{"t": 26.345, "kind": "speech", "owner": "ghost", "start": 22.73, "end": 26.35, "seconds": 3.62}
+{"t": 26.802, "kind": "flavour", "command": "hamster attacks cat", "text": "The hamster swiftly advances 14 feet and with a deft strike delivers a fatal blow to the cat, leaving it weakened and in dire need of life's sustenance."}
+{"t": 40.263, "kind": "say", "text": "next turn"}
+{"t": 41.659, "kind": "say_synth", "text": "next turn", "synth_ms": 1395, "seconds": 1.23}
+{"t": 43.703, "kind": "fault", "code": "SPEAKER_CONTENDED", "detail": "waited 2042ms for the speaker; something else was talking", "blocked_ms": 2042}
+{"t": 45.822, "kind": "speech", "owner": "autoplay", "start": 29.36, "end": 45.82, "seconds": 16.46}
+{"t": 45.951, "kind": "info", "text": "gentelman's turn."}
+{"t": 45.951, "kind": "command", "command": "next turn", "ok": true, "ms": 168, "lines": ["gentelman's turn."]}
+{"t": 51.958, "kind": "speech", "owner": "ghost", "start": 48.44, "end": 51.95, "seconds": 3.51}
+{"t": 52.607, "kind": "turn", "round": 1, "who": "gentelman"}
+{"t": 52.716, "kind": "say", "text": "gentelman attacks elf"}
+{"t": 54.276, "kind": "say_synth", "text": "gentelman attacks elf", "synth_ms": 1559, "seconds": 1.98}
+{"t": 57.227, "kind": "info", "text": "gentelman attacks elf: 20 to hit [15] +5."}
+{"t": 57.227, "kind": "info", "text": "Sneak Attack: hamster has it occupied, so gentelman adds 1 (1d6)."}
+{"t": 57.227, "kind": "info", "text": "That hits AC 13 for 10 damage."}
+{"t": 57.227, "kind": "info", "text": "elf drops to 0 hit points and is dying. Death saves on their turn."}
+{"t": 57.227, "kind": "command", "command": "gentelman attacks elf", "ok": true, "ms": 161, "lines": ["gentelman attacks elf: 20 to hit [15] +5.", "Sneak Attack: hamster has it occupied, so gentelman adds 1 (1d6).", "That hits AC 13 for 10 damage.", "elf drops to 0 hit points and is dying. Death saves on their turn."]}
+{"t": 60.606, "kind": "speech", "owner": "autoplay", "start": 54.38, "end": 60.61, "seconds": 6.23}
+{"t": 61.041, "kind": "flavour", "command": "gentelman attacks elf", "text": "Gentleman strikes with finesse, their blade finding a vulnerable spot on elf's form, a telltale glimmer of pain flashing across their visage before they crumple to the ground, gasping for breath."}
+{"t": 76.508, "kind": "say", "text": "gentelman moves away from elf"}
+{"t": 77.843, "kind": "say_synth", "text": "gentelman moves away from elf", "synth_ms": 1334, "seconds": 2.3}
+{"t": 80.317, "kind": "fault", "code": "SPEAKER_CONTENDED", "detail": "waited 2472ms for the speaker; something else was talking", "blocked_ms": 2472}
+{"t": 83.511, "kind": "speech", "owner": "autoplay", "start": 63.33, "end": 83.51, "seconds": 20.18}
+{"t": 85.45, "kind": "info", "text": "gentelman backs 28 feet away from elf, opening the gap from 42 to 70 feet."}
+{"t": 85.45, "kind": "info", "text": "That is all the movement gentelman has."}
+{"t": 85.45, "kind": "command", "command": "gentelman moves away from elf", "ok": true, "ms": 2004, "lines": ["gentelman backs 28 feet away from elf, opening the gap from 42 to 70 feet.", "That is all the movement gentelman has."]}
+{"t": 88.834, "kind": "speech", "owner": "ghost", "start": 85.22, "end": 88.83, "seconds": 3.61}
+{"t": 89.26, "kind": "flavour", "command": "gentelman moves away from elf", "text": "The gentleman gracefully steps back, creating a vast expanse between them."}
+{"t": 96.562, "kind": "say", "text": "next turn"}
+{"t": 97.694, "kind": "say_synth", "text": "next turn", "synth_ms": 1131, "seconds": 1.23}
+{"t": 100.32, "kind": "fault", "code": "SPEAKER_CONTENDED", "detail": "waited 2625ms for the speaker; something else was talking", "blocked_ms": 2625}
+{"t": 102.411, "kind": "speech", "owner": "autoplay", "start": 90.75, "end": 102.41, "seconds": 11.66}
+{"t": 102.562, "kind": "info", "text": "weirdo's turn."}
+{"t": 102.564, "kind": "command", "command": "next turn", "ok": true, "ms": 163, "lines": ["weirdo's turn."]}
+{"t": 120.905, "kind": "speech", "owner": "ghost", "start": 111.47, "end": 120.9, "seconds": 9.43}
+{"t": 121.574, "kind": "turn", "round": 1, "who": "weirdo"}
+{"t": 121.688, "kind": "fault", "code": "SKIPPED", "detail": "'weirdo casts ray of frost on emo': weirdo has already used its action this turn", "benign": true}
+{"t": 121.786, "kind": "say", "text": "weirdo moves away from emo"}
+{"t": 123.22, "kind": "say_synth", "text": "weirdo moves away from emo", "synth_ms": 1434, "seconds": 2.27}
+{"t": 126.343, "kind": "info", "text": "weirdo has no movement left this turn."}
+{"t": 126.344, "kind": "command", "command": "weirdo moves away from emo", "ok": false, "ms": 35, "lines": ["weirdo has no movement left this turn."]}
+{"t": 126.344, "kind": "fault", "code": "REFUSED_NO_MOVEMENT", "detail": "'weirdo moves away from emo': weirdo has no movement left this turn.", "benign": true}
+{"t": 143.86, "kind": "speech", "owner": "autoplay", "start": 123.22, "end": 143.86, "seconds": 20.64}
+{"t": 144.254, "kind": "flavour", "command": "weirdo moves away from emo", "text": "Weirdo's last movement for this turn comes to an abrupt halt."}
+{"t": 150.793, "kind": "say", "text": "next turn"}
+{"t": 151.942, "kind": "say_synth", "text": "next turn", "synth_ms": 1149, "seconds": 1.23}
+{"t": 152.868, "kind": "fault", "code": "SPEAKER_CONTENDED", "detail": "waited 925ms for the speaker; something else was talking", "blocked_ms": 925}
+{"t": 155.004, "kind": "speech", "owner": "autoplay", "start": 146.07, "end": 155.0, "seconds": 8.93}
+{"t": 155.21, "kind": "info", "text": "elf's turn."}
+{"t": 155.213, "kind": "command", "command": "next turn", "ok": true, "ms": 241, "lines": ["elf's turn."]}
+{"t": 181.167, "kind": "speech", "owner": "ghost", "start": 159.43, "end": 181.17, "seconds": 21.74}
+{"t": 181.612, "kind": "turn", "round": 1, "who": "elf"}
+{"t": 181.759, "kind": "fault", "code": "SKIPPED", "detail": "'elf drinks potion of healing': elf is down at 0 hit points and can only roll a death save", "benign": true}
+{"t": 181.85, "kind": "fault", "code": "SKIPPED", "detail": "'elf casts magic missile on freak': elf is down at 0 hit points and can only roll a death save", "benign": true}
+{"t": 181.959, "kind": "fault", "code": "SKIPPED", "detail": "'elf moves away from freak': elf is down at 0 hit points and can only roll a death save", "benign": true}
+{"t": 182.073, "kind": "say", "text": "next turn"}
+{"t": 183.348, "kind": "say_synth", "text": "next turn", "synth_ms": 1274, "seconds": 1.23}
+{"t": 185.491, "kind": "speech", "owner": "autoplay", "start": 183.38, "end": 185.49, "seconds": 2.11}
+{"t": 185.647, "kind": "info", "text": "emo's turn."}
+{"t": 185.647, "kind": "command", "command": "next turn", "ok": true, "ms": 217, "lines": ["emo's turn."]}
+{"t": 198.156, "kind": "speech", "owner": "ghost", "start": 189.81, "end": 198.16, "seconds": 8.35}
+{"t": 198.762, "kind": "turn", "round": 1, "who": "emo"}
+{"t": 198.842, "kind": "say", "text": "emo casts shield of faith on cat"}
+{"t": 200.34, "kind": "say_synth", "text": "emo casts shield of faith on cat", "synth_ms": 1497, "seconds": 2.48}
+{"t": 203.684, "kind": "info", "text": "emo casts Shield of Faith (1 slot(s) left)."}
+{"t": 203.684, "kind": "info", "text": "cat is now AC 14."}
+{"t": 203.684, "kind": "command", "command": "emo casts shield of faith on cat", "ok": true, "ms": 68, "lines": ["emo casts Shield of Faith (1 slot(s) left).", "cat is now AC 14."]}
+{"t": 205.592, "kind": "speech", "owner": "autoplay", "start": 200.38, "end": 205.59, "seconds": 5.21}
+{"t": 205.992, "kind": "flavour", "command": "emo casts shield of faith on cat", "text": "Emo raises their hands, whispering incantations as a protective force envelops cat, granting them an armor of faith and raising their defense."}
+{"t": 218.523, "kind": "say", "text": "emo casts guiding bolt on freak"}
+{"t": 219.886, "kind": "say_synth", "text": "emo casts guiding bolt on freak", "synth_ms": 1362, "seconds": 2.5}
+{"t": 221.454, "kind": "fault", "code": "SPEAKER_CONTENDED", "detail": "waited 1566ms for the speaker; something else was talking", "blocked_ms": 1566}
+{"t": 224.855, "kind": "info", "text": "emo casts Guiding Bolt (0 slot(s) left)."}
+{"t": 224.855, "kind": "info", "text": "19 hits AC 11."}
+{"t": 224.855, "kind": "info", "text": "freak takes 16, down to 0."}
+{"t": 224.855, "kind": "info", "text": "freak drops to 0 hit points and dies."}
+{"t": 224.856, "kind": "command", "command": "emo casts guiding bolt on freak", "ok": true, "ms": 111, "lines": ["emo casts Guiding Bolt (0 slot(s) left).", "19 hits AC 11.", "freak takes 16, down to 0.", "freak drops to 0 hit points and dies."]}
+{"t": 226.579, "kind": "speech", "owner": "autoplay", "start": 208.11, "end": 226.58, "seconds": 18.47}
+{"t": 227.062, "kind": "flavour", "command": "emo casts guiding bolt on freak", "text": "Emo channels divine energy, a radiant bolt piercing Freak's defenses and silencing their battle cry."}
+{"t": 230.627, "kind": "fault", "code": "SPEAKER_CONTENDED", "detail": "waited 1737ms for the speaker; something else was talking", "blocked_ms": 1737}
+{"t": 238.691, "kind": "say", "text": "emo moves away from freak"}
+{"t": 240.161, "kind": "say_synth", "text": "emo moves away from freak", "synth_ms": 1469, "seconds": 2.05}
+{"t": 243.851, "kind": "fault", "code": "SPEAKER_CONTENDED", "detail": "waited 3689ms for the speaker; something else was talking", "blocked_ms": 3689}
+{"t": 246.788, "kind": "speech", "owner": "ghost", "start": 228.79, "end": 246.79, "seconds": 18.0}
+{"t": 248.76, "kind": "info", "text": "emo backs 28 feet away from freak, opening the gap from 42 to 70 feet."}
+{"t": 248.76, "kind": "info", "text": "That is all the movement emo has."}
+{"t": 248.76, "kind": "command", "command": "emo moves away from freak", "ok": true, "ms": 2002, "lines": ["emo backs 28 feet away from freak, opening the gap from 42 to 70 feet.", "That is all the movement emo has."]}
+{"t": 262.48, "kind": "speech", "owner": "ghost", "start": 251.92, "end": 262.48, "seconds": 10.56}
+{"t": 262.842, "kind": "flavour", "command": "emo moves away from freak", "text": "Emo withdraws, distancing themselves from freak by a considerable span."}
+{"t": 270.333, "kind": "speech", "owner": "autoplay", "start": 264.69, "end": 270.33, "seconds": 5.64}
+{"t": 270.369, "kind": "say", "text": "next turn"}
+{"t": 271.5, "kind": "say_synth", "text": "next turn", "synth_ms": 1130, "seconds": 1.23}
+{"t": 278.333, "kind": "fault", "code": "SPEAKER_CONTENDED", "detail": "waited 6831ms for the speaker; something else was talking", "blocked_ms": 6831}
+{"t": 280.4, "kind": "speech", "owner": "ghost", "start": 270.44, "end": 280.4, "seconds": 9.96}
+{"t": 280.448, "kind": "info", "text": "freak's turn."}
+{"t": 280.448, "kind": "command", "command": "next turn", "ok": true, "ms": 94, "lines": ["freak's turn."]}
+{"t": 284.725, "kind": "speech", "owner": "ghost", "start": 282.82, "end": 284.73, "seconds": 1.91}
+{"t": 285.256, "kind": "turn", "round": 1, "who": "freak"}
+{"t": 285.3, "kind": "fault", "code": "SKIPPED", "detail": "'freak drinks potion of greater healing': freak is down at 0 hit points and can only roll a death save", "benign": true}
+{"t": 285.343, "kind": "fault", "code": "SKIPPED", "detail": "'freak rages': freak is down at 0 hit points and can only roll a death save", "benign": true}
+{"t": 285.389, "kind": "fault", "code": "SKIPPED", "detail": "'freak attacks emo': freak is down at 0 hit points and can only roll a death save", "benign": true}
+{"t": 285.438, "kind": "say", "text": "next turn"}
+{"t": 286.621, "kind": "say_synth", "text": "next turn", "synth_ms": 1183, "seconds": 1.23}
+{"t": 288.739, "kind": "speech", "owner": "autoplay", "start": 286.63, "end": 288.74, "seconds": 2.11}
+{"t": 288.784, "kind": "info", "text": "cat's turn."}
+{"t": 288.784, "kind": "command", "command": "next turn", "ok": true, "ms": 93, "lines": ["cat's turn."]}
+{"t": 293.06, "kind": "speech", "owner": "ghost", "start": 291.05, "end": 293.06, "seconds": 2.01}
+{"t": 293.503, "kind": "turn", "round": 1, "who": "cat"}
+{"t": 293.55, "kind": "fault", "code": "SKIPPED", "detail": "'cat attacks gentelman': cat is down at 0 hit points and can only roll a death save", "benign": true}
+{"t": 293.553, "kind": "info", "text": "The ghost is running the monsters."}
+{"t": 293.553, "kind": "command", "command": "dm auto on", "ok": true, "ms": 2, "lines": ["The ghost is running the monsters."]}
+{"t": 293.553, "kind": "speech_totals", "autoplay": 122.7, "ghost": 100.8, "segments": 25}
+{"t": 293.554, "kind": "summary", "counts": {"SPEAKER_CONTENDED": 8, "SKIPPED": 8, "REFUSED_NO_MOVEMENT": 1}}

@@ -1,0 +1,188 @@
+{"t": 0.001, "kind": "run_start", "rounds": 1, "turns": 0, "dry": false, "gateway": "http://127.0.0.1:9000", "voice": "af_aoede", "ghost": "http://127.0.0.1:8770", "cluster": "http://gpu-farmi-004.rd.tuni.fi:11434/api/chat", "flavour": true}
+{"t": 0.077, "kind": "info", "text": "The monsters are yours to run."}
+{"t": 0.077, "kind": "command", "command": "dm auto off", "ok": true, "ms": 3, "lines": ["The monsters are yours to run."]}
+{"t": 0.077, "kind": "reset_start"}
+{"t": 0.192, "kind": "info", "text": "The party takes a long rest: hit points, spell slots and rages are back."}
+{"t": 0.192, "kind": "command", "command": "long rest", "ok": true, "ms": 114, "lines": ["The party takes a long rest: hit points, spell slots and rages are back."]}
+{"t": 0.349, "kind": "info", "text": "elf is now at 61,-42."}
+{"t": 0.349, "kind": "command", "command": "teleport elf to 61,-42", "ok": true, "ms": 41, "lines": ["elf is now at 61,-42."]}
+{"t": 0.377, "kind": "info", "text": "emo is now at 58,-39."}
+{"t": 0.377, "kind": "command", "command": "teleport emo to 58,-39", "ok": true, "ms": 28, "lines": ["emo is now at 58,-39."]}
+{"t": 0.421, "kind": "info", "text": "cat is now at 55,-37."}
+{"t": 0.421, "kind": "command", "command": "teleport cat to 55,-37", "ok": true, "ms": 43, "lines": ["cat is now at 55,-37."]}
+{"t": 0.456, "kind": "info", "text": "freak is now at 37,-13."}
+{"t": 0.456, "kind": "command", "command": "teleport freak to 37,-13", "ok": true, "ms": 34, "lines": ["freak is now at 37,-13."]}
+{"t": 0.492, "kind": "info", "text": "gentelman is now at 40,-12."}
+{"t": 0.492, "kind": "command", "command": "teleport gentelman to 40,-12", "ok": true, "ms": 35, "lines": ["gentelman is now at 40,-12."]}
+{"t": 0.513, "kind": "info", "text": "weirdo is now at 36,-8."}
+{"t": 0.514, "kind": "command", "command": "teleport weirdo to 36,-8", "ok": true, "ms": 21, "lines": ["weirdo is now at 36,-8."]}
+{"t": 0.544, "kind": "info", "text": "hamster is now at 62,-23."}
+{"t": 0.544, "kind": "command", "command": "teleport hamster to 62,-23", "ok": true, "ms": 30, "lines": ["hamster is now at 62,-23."]}
+{"t": 0.697, "kind": "reset_done"}
+{"t": 0.703, "kind": "say", "text": "roll initiative"}
+{"t": 0.704, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 0.704, "kind": "say_silent", "text": "roll initiative", "synth_ms": 1}
+{"t": 1.247, "kind": "info", "text": "Initiative: hamster 23, emo 21, gentelman 11, weirdo 9, cat 8, freak 6, elf 2."}
+{"t": 1.247, "kind": "info", "text": "hamster is up first."}
+{"t": 1.247, "kind": "command", "command": "roll initiative", "ok": true, "ms": 542, "lines": ["Initiative: hamster 23, emo 21, gentelman 11, weirdo 9, cat 8, freak 6, elf 2.", "hamster is up first."]}
+{"t": 14.795, "kind": "speech", "owner": "ghost", "start": 8.07, "end": 14.8, "seconds": 6.73}
+{"t": 15.232, "kind": "flavour", "command": "roll initiative", "text": "Roll swiftly leaps forward, striking with precision before anyone else can react."}
+{"t": 15.233, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 15.54, "kind": "turn", "round": 1, "who": "cat"}
+{"t": 15.653, "kind": "say", "text": "cat attacks freak"}
+{"t": 15.657, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 15.657, "kind": "say_silent", "text": "cat attacks freak", "synth_ms": 3}
+{"t": 15.699, "kind": "info", "text": "cat has no movement left this turn."}
+{"t": 15.699, "kind": "command", "command": "cat attacks freak", "ok": false, "ms": 41, "lines": ["cat has no movement left this turn."]}
+{"t": 15.7, "kind": "fault", "code": "REFUSED_NO_ITEM", "detail": "'cat attacks freak': cat has no movement left this turn.", "benign": true}
+{"t": 16.913, "kind": "flavour", "command": "cat attacks freak", "text": "The cat darts forward with a desperate swipe, but finds they have no energy left to connect."}
+{"t": 16.914, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 17.082, "kind": "say", "text": "next turn"}
+{"t": 17.083, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 17.083, "kind": "say_silent", "text": "next turn", "synth_ms": 1}
+{"t": 17.294, "kind": "info", "text": "Round 2, hamster's turn."}
+{"t": 17.295, "kind": "command", "command": "next turn", "ok": true, "ms": 209, "lines": ["Round 2, hamster's turn."]}
+{"t": 23.461, "kind": "speech", "owner": "ghost", "start": 19.95, "end": 23.46, "seconds": 3.51}
+{"t": 23.83, "kind": "flavour", "command": "next turn", "text": "Hamster launches into action, swiftly darting towards the troll's exposed flank."}
+{"t": 23.832, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 24.186, "kind": "turn", "round": 2, "who": "hamster"}
+{"t": 24.3, "kind": "say", "text": "hamster attacks cat"}
+{"t": 24.304, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 24.304, "kind": "say_silent", "text": "hamster attacks cat", "synth_ms": 3}
+{"t": 26.36, "kind": "info", "text": "hamster moves 28 feet towards cat."}
+{"t": 26.36, "kind": "info", "text": "That is all the movement hamster has."}
+{"t": 26.36, "kind": "info", "text": "hamster is not in reach, so the attack is held."}
+{"t": 26.36, "kind": "command", "command": "hamster attacks cat", "ok": true, "ms": 2055, "lines": ["hamster moves 28 feet towards cat.", "That is all the movement hamster has.", "hamster is not in reach, so the attack is held."]}
+{"t": 32.523, "kind": "speech", "owner": "ghost", "start": 28.91, "end": 32.52, "seconds": 3.61}
+{"t": 32.91, "kind": "flavour", "command": "hamster attacks cat", "text": "Hamster dashes towards cat, reaching but failing to land a blow."}
+{"t": 32.916, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 33.09, "kind": "say", "text": "next turn"}
+{"t": 33.09, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 33.09, "kind": "say_silent", "text": "next turn", "synth_ms": 0}
+{"t": 33.249, "kind": "info", "text": "gentelman's turn."}
+{"t": 33.249, "kind": "command", "command": "next turn", "ok": true, "ms": 156, "lines": ["gentelman's turn."]}
+{"t": 41.583, "kind": "speech", "owner": "ghost", "start": 37.87, "end": 41.58, "seconds": 3.71}
+{"t": 41.998, "kind": "flavour", "command": "next turn", "text": "Gentleman gracefully executes their action."}
+{"t": 42.0, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 42.367, "kind": "turn", "round": 2, "who": "gentelman"}
+{"t": 42.51, "kind": "say", "text": "gentelman attacks cat"}
+{"t": 42.512, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 42.512, "kind": "say_silent", "text": "gentelman attacks cat", "synth_ms": 2}
+{"t": 42.632, "kind": "info", "text": "gentelman has no line of sight to cat \u2014 the Unknown Shape is in the way."}
+{"t": 42.632, "kind": "info", "text": "There is nowhere within 30 feet with a clear shot."}
+{"t": 42.632, "kind": "command", "command": "gentelman attacks cat", "ok": false, "ms": 119, "lines": ["gentelman has no line of sight to cat \u2014 the Unknown Shape is in the way.", "There is nowhere within 30 feet with a clear shot."]}
+{"t": 42.632, "kind": "fault", "code": "REFUSED_NO_SIGHT", "detail": "'gentelman attacks cat': gentelman has no line of sight to cat \u2014 the Unknown Shape is in the way.", "benign": true}
+{"t": 49.945, "kind": "speech", "owner": "ghost", "start": 46.53, "end": 49.94, "seconds": 3.41}
+{"t": 50.387, "kind": "flavour", "command": "gentelman attacks cat", "text": "The gentleman reaches out to attack, but their aim is foiled by the obscuring presence of the Unknown Shape, leaving the cat untouched for now."}
+{"t": 50.388, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 50.389, "kind": "info", "text": "(no shot -- trying 'gentelman attacks elf')"}
+{"t": 50.393, "kind": "say", "text": "gentelman attacks elf"}
+{"t": 50.394, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 50.394, "kind": "say_silent", "text": "gentelman attacks elf", "synth_ms": 1}
+{"t": 50.525, "kind": "info", "text": "gentelman has no line of sight to elf \u2014 the Unknown Shape and the WALL are in the way."}
+{"t": 50.525, "kind": "info", "text": "There is nowhere within 30 feet with a clear shot."}
+{"t": 50.525, "kind": "command", "command": "gentelman attacks elf", "ok": false, "ms": 130, "lines": ["gentelman has no line of sight to elf \u2014 the Unknown Shape and the WALL are in the way.", "There is nowhere within 30 feet with a clear shot."]}
+{"t": 50.525, "kind": "fault", "code": "REFUSED_NO_SIGHT", "detail": "'gentelman attacks elf': gentelman has no line of sight to elf \u2014 the Unknown Shape and the WALL are in the way.", "benign": true}
+{"t": 58.712, "kind": "speech", "owner": "ghost", "start": 55.3, "end": 58.71, "seconds": 3.41}
+{"t": 59.07, "kind": "flavour", "command": "gentelman attacks elf", "text": "Gentleman strains to see the elf, but their aim remains elusive as if the very walls themselves conspire against a clear shot."}
+{"t": 59.072, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 59.072, "kind": "info", "text": "(no shot -- trying 'gentelman attacks emo')"}
+{"t": 59.08, "kind": "say", "text": "gentelman attacks emo"}
+{"t": 59.081, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 59.081, "kind": "say_silent", "text": "gentelman attacks emo", "synth_ms": 1}
+{"t": 59.093, "kind": "info", "text": "It is elf's turn, not gentelman's. Did you mean elf?"}
+{"t": 59.093, "kind": "command", "command": "gentelman attacks emo", "ok": false, "ms": 11, "lines": ["It is elf's turn, not gentelman's. Did you mean elf?"]}
+{"t": 59.097, "kind": "fault", "code": "REFUSED_OTHER", "detail": "'gentelman attacks emo': It is elf's turn, not gentelman's. Did you mean elf?"}
+{"t": 66.461, "kind": "speech", "owner": "ghost", "start": 63.25, "end": 66.46, "seconds": 3.21}
+{"t": 66.851, "kind": "flavour", "command": "gentelman attacks emo", "text": "Gentleman gracefully swings their sword, but misses Emo's agile dodge."}
+{"t": 66.852, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 66.986, "kind": "say", "text": "gentelman moves away from cat"}
+{"t": 66.986, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 66.986, "kind": "say_silent", "text": "gentelman moves away from cat", "synth_ms": 0}
+{"t": 66.998, "kind": "info", "text": "It is elf's turn, not gentelman's. Did you mean elf?"}
+{"t": 66.998, "kind": "command", "command": "gentelman moves away from cat", "ok": false, "ms": 11, "lines": ["It is elf's turn, not gentelman's. Did you mean elf?"]}
+{"t": 66.998, "kind": "fault", "code": "REFUSED_OTHER", "detail": "'gentelman moves away from cat': It is elf's turn, not gentelman's. Did you mean elf?"}
+{"t": 75.815, "kind": "speech", "owner": "ghost", "start": 72.0, "end": 75.81, "seconds": 3.81}
+{"t": 76.151, "kind": "flavour", "command": "gentelman moves away from cat", "text": "The gentleman gracefully steps back from the cat."}
+{"t": 76.152, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 76.328, "kind": "say", "text": "next turn"}
+{"t": 76.329, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 76.33, "kind": "say_silent", "text": "next turn", "synth_ms": 1}
+{"t": 76.55, "kind": "info", "text": "freak's turn."}
+{"t": 76.55, "kind": "command", "command": "next turn", "ok": true, "ms": 220, "lines": ["freak's turn."]}
+{"t": 97.163, "kind": "speech", "owner": "ghost", "start": 87.82, "end": 97.16, "seconds": 9.34}
+{"t": 97.564, "kind": "flavour", "command": "next turn", "text": "Freak takes their action, striking with precision and force."}
+{"t": 97.567, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 97.847, "kind": "turn", "round": 1, "who": "freak"}
+{"t": 98.006, "kind": "say", "text": "freak rages"}
+{"t": 98.013, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 98.013, "kind": "say_silent", "text": "freak rages", "synth_ms": 6}
+{"t": 98.132, "kind": "info", "text": "freak rages: +2 melee damage and half damage from weapons, for 10 rounds (1 left today)."}
+{"t": 98.132, "kind": "command", "command": "freak rages", "ok": true, "ms": 118, "lines": ["freak rages: +2 melee damage and half damage from weapons, for 10 rounds (1 left today)."]}
+{"t": 109.834, "kind": "speech", "owner": "ghost", "start": 104.62, "end": 109.83, "seconds": 5.21}
+{"t": 110.311, "kind": "flavour", "command": "freak rages", "text": "Freak strikes with ferocious intensity, their blows ringing louder and more impactful than usual."}
+{"t": 110.316, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 110.516, "kind": "say", "text": "freak attacks cat"}
+{"t": 110.527, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 110.527, "kind": "say_silent", "text": "freak attacks cat", "synth_ms": 7}
+{"t": 110.62, "kind": "info", "text": "freak has no line of sight to cat \u2014 the Unknown Shape is in the way."}
+{"t": 110.62, "kind": "info", "text": "There is nowhere within 30 feet with a clear shot."}
+{"t": 110.62, "kind": "command", "command": "freak attacks cat", "ok": false, "ms": 89, "lines": ["freak has no line of sight to cat \u2014 the Unknown Shape is in the way.", "There is nowhere within 30 feet with a clear shot."]}
+{"t": 110.623, "kind": "fault", "code": "REFUSED_NO_SIGHT", "detail": "'freak attacks cat': freak has no line of sight to cat \u2014 the Unknown Shape is in the way.", "benign": true}
+{"t": 117.977, "kind": "speech", "owner": "ghost", "start": 114.57, "end": 117.98, "seconds": 3.41}
+{"t": 118.477, "kind": "flavour", "command": "freak attacks cat", "text": "Freak, with no line of sight obstructed by the Unknown Shape, finds no path for a clear shot within reach."}
+{"t": 118.482, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 118.612, "kind": "say", "text": "next turn"}
+{"t": 118.617, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 118.618, "kind": "say_silent", "text": "next turn", "synth_ms": 5}
+{"t": 118.83, "kind": "info", "text": "cat's turn."}
+{"t": 118.83, "kind": "command", "command": "next turn", "ok": true, "ms": 212, "lines": ["cat's turn."]}
+{"t": 126.83, "kind": "speech", "owner": "ghost", "start": 123.22, "end": 126.83, "seconds": 3.61}
+{"t": 127.183, "kind": "flavour", "command": "next turn", "text": "Cat leaps gracefully, claws slashing at the unseen foe."}
+{"t": 127.185, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 127.549, "kind": "turn", "round": 1, "who": "cat"}
+{"t": 127.732, "kind": "say", "text": "cat attacks freak"}
+{"t": 127.74, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 127.74, "kind": "say_silent", "text": "cat attacks freak", "synth_ms": 7}
+{"t": 129.832, "kind": "info", "text": "cat moves 28 feet towards freak."}
+{"t": 129.833, "kind": "info", "text": "That is all the movement cat has."}
+{"t": 129.833, "kind": "info", "text": "cat is not in reach, so the attack is held."}
+{"t": 129.833, "kind": "command", "command": "cat attacks freak", "ok": true, "ms": 2091, "lines": ["cat moves 28 feet towards freak.", "That is all the movement cat has.", "cat is not in reach, so the attack is held."]}
+{"t": 135.896, "kind": "speech", "owner": "ghost", "start": 132.18, "end": 135.9, "seconds": 3.72}
+{"t": 136.268, "kind": "flavour", "command": "cat attacks freak", "text": "Cat dashes towards Freak, claws reaching but falling short of a strike."}
+{"t": 136.27, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 136.444, "kind": "say", "text": "next turn"}
+{"t": 136.453, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 136.453, "kind": "say_silent", "text": "next turn", "synth_ms": 1}
+{"t": 136.691, "kind": "info", "text": "gentelman's turn."}
+{"t": 136.691, "kind": "command", "command": "next turn", "ok": true, "ms": 237, "lines": ["gentelman's turn."]}
+{"t": 144.247, "kind": "speech", "owner": "ghost", "start": 140.83, "end": 144.25, "seconds": 3.42}
+{"t": 144.627, "kind": "flavour", "command": "next turn", "text": "Gentleman takes aim, delicately releasing a well-placed shot towards their foe."}
+{"t": 144.631, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 145.003, "kind": "turn", "round": 1, "who": "gentelman"}
+{"t": 145.154, "kind": "say", "text": "gentelman attacks cat"}
+{"t": 145.155, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 145.155, "kind": "say_silent", "text": "gentelman attacks cat", "synth_ms": 0}
+{"t": 145.249, "kind": "info", "text": "gentelman has no line of sight to cat \u2014 the Unknown Shape is in the way."}
+{"t": 145.25, "kind": "info", "text": "There is nowhere within 30 feet with a clear shot."}
+{"t": 145.25, "kind": "command", "command": "gentelman attacks cat", "ok": false, "ms": 94, "lines": ["gentelman has no line of sight to cat \u2014 the Unknown Shape is in the way.", "There is nowhere within 30 feet with a clear shot."]}
+{"t": 145.25, "kind": "fault", "code": "REFUSED_NO_SIGHT", "detail": "'gentelman attacks cat': gentelman has no line of sight to cat \u2014 the Unknown Shape is in the way.", "benign": true}
+{"t": 152.696, "kind": "speech", "owner": "ghost", "start": 149.28, "end": 152.7, "seconds": 3.42}
+{"t": 153.099, "kind": "flavour", "command": "gentelman attacks cat", "text": "The gentleman lunges, but the Unknown Shape obstructs their reach, leaving the cat untouched."}
+{"t": 153.104, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 153.104, "kind": "info", "text": "(no shot -- trying 'gentelman attacks elf')"}
+{"t": 153.104, "kind": "say", "text": "gentelman attacks elf"}
+{"t": 153.105, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 153.105, "kind": "say_silent", "text": "gentelman attacks elf", "synth_ms": 0}
+{"t": 153.232, "kind": "info", "text": "gentelman has no line of sight to elf \u2014 the Unknown Shape and the WALL are in the way."}
+{"t": 153.232, "kind": "info", "text": "There is nowhere within 30 feet with a clear shot."}
+{"t": 153.232, "kind": "command", "command": "gentelman attacks elf", "ok": false, "ms": 126, "lines": ["gentelman has no line of sight to elf \u2014 the Unknown Shape and the WALL are in the way.", "There is nowhere within 30 feet with a clear shot."]}
+{"t": 153.232, "kind": "fault", "code": "REFUSED_NO_SIGHT", "detail": "'gentelman attacks elf': gentelman has no line of sight to elf \u2014 the Unknown Shape and the WALL are in the way.", "benign": true}
+{"t": 160.549, "kind": "speech", "owner": "ghost", "start": 157.34, "end": 160.55, "seconds": 3.21}
+{"t": 160.883, "kind": "flavour", "command": "gentelman attacks elf", "text": "Gentleman strains to catch a glimpse of elf, but the wall and the shape conceal their presence, leaving them beyond reach."}
+{"t": 160.884, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 160.884, "kind": "info", "text": "(no shot -- trying 'gentelman attacks emo')"}
+{"t": 160.884, "kind": "say", "text": "gentelman attacks emo"}
+{"t": 160.885, "kind": "fault", "code": "GATEWAY_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}
+{"t": 160.885, "kind": "say_silent", "text": "gentelman attacks emo", "synth_ms": 0}
+{"t": 160.886, "kind": "fault", "code": "GHOST_UNREACHABLE", "detail": "URLError: <urlopen error [Errno 111] Connection refused>"}

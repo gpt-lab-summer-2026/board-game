@@ -1,0 +1,8 @@
+{"t": 0.0, "kind": "run_start", "rounds": 1, "turns": 2, "dry": true, "gateway": "http://127.0.0.1:9000", "voice": "af_aoede", "ghost": "http://127.0.0.1:8770", "cluster": "http://gpu-farmi-004.rd.tuni.fi:11434/api/chat", "flavour": true}
+{"t": 0.071, "kind": "say", "text": "roll initiative"}
+{"t": 0.166, "kind": "turn", "round": 2, "who": "cat"}
+{"t": 0.216, "kind": "fault", "code": "SKIPPED", "detail": "'cat attacks hamster': cat has already used its action this turn", "benign": true}
+{"t": 0.259, "kind": "say", "text": "next turn"}
+{"t": 0.35, "kind": "turn", "round": 2, "who": "cat"}
+{"t": 0.402, "kind": "fault", "code": "SKIPPED", "detail": "'cat attacks hamster': cat has already used its action this turn", "benign": true}
+{"t": 0.402, "kind": "summary", "counts": {"SKIPPED": 2}}

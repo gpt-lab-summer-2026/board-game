@@ -267,6 +267,12 @@ async def execute(
             client, actor_uuid, target_uuid, actor_name, target_name, intent, accept_hazard
         )
 
+    # A bare "<actor> attacks <target>" arrives with no kind; resolve it here,
+    # before the melee walk is decided, or the approach below is skipped and
+    # every unqualified attack is held out of reach.
+    if intent.action is Action.ATTACK and intent.kind is None:
+        intent = replace(intent, kind=await _choose_attack_kind(client, actor_uuid, target_uuid))
+
     # Melee walks first. The movement narration has to survive into the
     # attack's outcome -- "it hit for 11" without "it crossed the lava to do
     # it" is exactly the half of the turn people need to hear.
@@ -522,9 +528,6 @@ async def _do_use_item(client, actor_uuid, target_uuid, intent: Intent, as_playe
     if data is None:
         return Outcome(False, [f"{name} has no sheet, so nothing to carry."])
 
-    if not await turns.has(client, actor_uuid, "action"):
-        return Outcome(False, [f"{name} has already used its action this turn."])
-
     carried, entry = await sheet.find_carried(client, data, intent.item or "")
     if carried is None:
         have = await sheet.carried_names(client, data)
@@ -533,8 +536,17 @@ async def _do_use_item(client, actor_uuid, target_uuid, intent: Intent, as_playe
             [f"{name} is not carrying {intent.item!r}. Carrying: {have or 'nothing'}."],
         )
 
+    # Drinking a potion is a bonus action; throwing a flask is an action. The
+    # budget check therefore has to come *after* the item is identified -- it
+    # used to sit above the lookup and charge an action for everything, which
+    # cost a wounded character its whole turn to swallow a healing potion.
+    cost = "bonus" if str(carried.get("kind") or "").lower() == "potion" else "action"
+    if not await turns.has(client, actor_uuid, cost):
+        used = "action" if cost == "action" else f"{cost} action"
+        return Outcome(False, [f"{name} has already used its {used} this turn."])
+
     left = await sheet.spend_item(client, actor_uuid, entry["id"])
-    await turns.spend(client, actor_uuid, "action")
+    await turns.spend(client, actor_uuid, cost)
     label = carried.get("name") or intent.item
     out = Outcome(True, [f"{name} uses {label} ({left} left)."])
 
@@ -1204,6 +1216,59 @@ async def _do_contest(
     return out.say(f"{target_name} is {applies}.")
 
 
+# Casting times for the spells on these sheets whose entries predate the
+# `castingTime` field. Straight from the PHB; a spell absent here is an action,
+# which is the 5e default and true of every other spell in the catalogue.
+_CASTING_TIME_5E = {
+    "shield of faith": "bonus",     # PHB 275
+    "healing word": "bonus",        # PHB 250
+    "hex": "bonus",                 # PHB 251
+    "hunter's mark": "bonus",       # PHB 251
+    "shield": "reaction",           # PHB 275
+    "hellish rebuke": "reaction",   # PHB 250
+    "absorb elements": "reaction",
+}
+
+
+async def _casting_time(client, spell: dict) -> str:
+    """"action", "bonus" or "reaction" for one spell.
+
+    The campaign catalogue is authoritative where it carries a `castingTime`,
+    because that is the field the mod's editor writes. It is consulted ahead of
+    the spell dict handed in: a *derived* sheet block stamps a blanket
+    "action" on everything, so trusting the sheet first would quietly override
+    a correct catalogue entry with a wrong default.
+    """
+    name = str(spell.get("name") or "").strip().lower()
+
+    try:
+        catalogue = await sheet.read_catalogue(client)
+        for entry in ((catalogue or {}).get("spells") or []):
+            if str(entry.get("name") or "").strip().lower() == name:
+                declared = str(entry.get("castingTime") or "").strip().lower()
+                if declared:
+                    return _normalise_casting_time(declared)
+                break
+    except Exception as e:  # noqa: BLE001 - the 5e table below still answers
+        log.info("could not read the catalogue for casting time: %s", e)
+
+    if name in _CASTING_TIME_5E:
+        return _CASTING_TIME_5E[name]
+
+    declared = str(spell.get("castingTime") or "").strip().lower()
+    return _normalise_casting_time(declared) if declared else "action"
+
+
+def _normalise_casting_time(raw: str) -> str:
+    """Map "1 bonus action", "bonus_action", "Reaction" and friends onto ours."""
+    raw = raw.lower()
+    if "reaction" in raw:
+        return "reaction"
+    if "bonus" in raw:
+        return "bonus"
+    return "action"
+
+
 async def _do_cast(
     client, actor_uuid: str, target_uuid: str | None, intent: Intent, as_player: str | None,
     *, focus: str | None = None,
@@ -1249,18 +1314,21 @@ async def _do_cast(
             ],
         )
 
-    if not await turns.has(client, actor_uuid, "action"):
-        return Outcome(False, [f"{actor_name} has already used its action this turn."])
+    # 5e charges a spell against whatever its casting time says, and getting
+    # this wrong is not a detail: a cleric who spends an action on Shield of
+    # Faith (a bonus action, PHB 275) loses the whole rest of the turn.
+    cost = await _casting_time(client, spell)
+    if not await turns.has(client, actor_uuid, cost):
+        used = "action" if cost == "action" else f"{cost} action"
+        return Outcome(False, [f"{actor_name} has already used its {used} this turn."])
 
     ok, left = await sheet.spend_slot(client, actor_uuid, int(spell.get("level") or 1))
     if not ok:
         return Outcome(False, [f"{actor_name} has no level {spell.get('level')} slots left."])
 
     # After the slot, so a cast refused for want of a slot does not also cost
-    # the action. Casting time is not modelled -- everything is an action -- so
-    # a bonus-action spell is currently charged as one; the sheet has no field
-    # to tell them apart yet.
-    await turns.spend(client, actor_uuid, "action")
+    # the action.
+    await turns.spend(client, actor_uuid, cost)
 
     name = spell.get("name") or intent.spell
     out = Outcome(True, [f"{actor_name} casts {name} ({left} slot(s) left)."])
@@ -1674,11 +1742,57 @@ async def _do_measure(client, actor_uuid, target_uuid, actor_name, target_name) 
     return out
 
 
+async def _choose_attack_kind(client, actor_uuid, target_uuid) -> AttackKind:
+    """What a bare "<actor> attacks <target>" should mean.
+
+    The choice a DM makes without being asked: swing if you are already in
+    reach, shoot if you are not, and never offer a weapon that isn't carried.
+    Only kinds the sheet actually has are candidates, so a wizard with no melee
+    weapon is never marched into reach and an archer at range is never told to
+    walk. With the target adjacent, melee wins over a bow on purpose -- a ranged
+    attack while threatened has disadvantage (PHB 195), so shooting from inside
+    reach is the worse of the two.
+
+    Falls back to melee only when nothing is equipped, which `_do_attack` then
+    refuses with a message about the missing weapon rather than a puzzle.
+    """
+    sheet_data = await sheet.read_sheet(client, actor_uuid)
+    derived = (sheet_data or {}).get("derived") or {}
+    have = {k for k in sheet.ATTACK_KINDS if derived.get(k)}
+    if not have:
+        return AttackKind.MELEE
+    if len(have) == 1:
+        return AttackKind(next(iter(have)))
+
+    in_reach = False
+    if "melee" in have:
+        try:
+            field = await _build_field(client)
+            a, b = field.occupants.get(actor_uuid), field.occupants.get(target_uuid)
+            if a is not None and b is not None:
+                reach = float((derived.get("melee") or {}).get("reach") or 5)
+                in_reach = grid_distance(a.cell, b.cell, field.grid) <= reach
+        except Exception as e:  # noqa: BLE001 - geometry is an optimisation here
+            log.info("could not measure reach for the attack kind: %s", e)
+
+    order = ("melee",) if in_reach else ("ranged", "cantrip", "melee")
+    for k in order:
+        if k in have:
+            return AttackKind(k)
+    return AttackKind.MELEE
+
+
 async def _do_attack(
-    client, actor_uuid, target_uuid, actor_name, target_name, intent, as_player, prefix,
+    client, actor_uuid, target_uuid, actor_name, target_name, intent, as_player, prefix=None,
     *, costs_action: bool = True,
 ) -> Outcome:
-    kind = (intent.kind or AttackKind.MELEE).value
+    # `prefix` defaults rather than being required: the cantrip branch of
+    # `_do_cast` calls this with seven positional arguments and no prefix (it
+    # has no movement to narrate), which made every "<actor> casts <cantrip> on
+    # <target>" die with a TypeError the console reported as "that went wrong".
+    if intent.kind is None:
+        intent = replace(intent, kind=await _choose_attack_kind(client, actor_uuid, target_uuid))
+    kind = intent.kind.value
     out = Outcome(True, list(prefix or []))
 
     # Checked before anything is rolled, and spent only once the attack has

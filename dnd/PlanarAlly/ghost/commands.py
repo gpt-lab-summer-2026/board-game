@@ -793,13 +793,17 @@ def parse(text: str) -> Intent:
     # translator as if it were prose. The console fills the target in and gives
     # a better refusal than this could if there is nothing to fill it from.
 
-    if action is Action.ATTACK and kind is None:
-        # "cast"/"shoot" already imply a kind; a bare "attack" does not, and
-        # guessing melee would send a wizard running at a dragon.
-        raise ParseError(
-            f"Melee, ranged or cantrip? Try '{actor} ranged attack"
-            + (f" on {target}'." if target else "'.")
-        )
+    # A bare "attack" carries no kind, and this used to be a ParseError asking
+    # melee/ranged/cantrip. That dead-ended: the answer ("melee") arrives as a
+    # line of its own with no actor in it, so it parses as nothing and the
+    # clarification can never be completed -- "<actor> attacks <target>", the
+    # most natural phrasing there is, was simply unusable.
+    #
+    # The parser was also the wrong place to decide. Guessing melee here would
+    # send a wizard running at a dragon, but only because a parser cannot see
+    # what the character carries or how far away the target is. The executor
+    # can, so `kind=None` travels on and `_do_attack` resolves it against the
+    # sheet and the board.
 
     return Intent(action=action, actor=actor, target=target, kind=kind, bias=bias, raw=raw)
 

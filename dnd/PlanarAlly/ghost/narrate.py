@@ -41,7 +41,7 @@ class Narrator:
             await asyncio.to_thread(self._speaker.speak, text)
 
 
-def try_build(voice: str = "af_bella") -> Narrator | None:
+def try_build(voice: str = "af_aoede") -> Narrator | None:
     """A Narrator, or None if the voice stack isn't available here.
 
     `GHOST_MUTE=1` returns None deliberately. The voice loop in ../python
