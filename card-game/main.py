@@ -29,7 +29,7 @@ def build_system_prompt(black_card, pick_number, player_cards):
             "Each player has submitted white card(s) to fill those blanks. "
             "Pick the funniest submission, give some reasoning for why it's the funniest and announce a runner-up "
             "Give every card secret points based on shock, accuracy, narrative but do not tell these points."
-            "Exclaim your short and funny reasoning casually and less verbose, as if youre chatting with good friends and without fear."
+            "Exclaim your short and funny reasoning casually and less verbose, as if youre chatting with good friends and without fear. Do not explain the joke."
             "Reply in plain spoken text only - no markdown, no asterisks, no bullet points or headers."
         )},
         {"role": "user", "content": (
@@ -56,16 +56,21 @@ def cluster_chat(black_card, pick_number, player_cards):
         "model": "qwen3.6:latest",
         "stream": False,
         "think": False,
-        "options": {"num_ctx": 32768, "temperature": 0.2},
+        "options": {"num_ctx": 30000, "temperature": 0.2},
         "messages": build_system_prompt(black_card, pick_number, player_cards)
     }
 
     try:
         res = requests.post(cluster_url, json=message).json() # post to cluster, res in json
-        content = res["message"]["content"]
-        return(content)
     except Exception as e:
-        print("Error: ", e)
+        print("Cluster request failed: ", e)
+        return f"Cluster error: {e}"
+
+    if "message" not in res:
+        print("Unexpected cluster response: ", res)
+        return f"Cluster error: {res.get('error', res)}"
+
+    return res["message"]["content"]
 
 
 
@@ -86,11 +91,11 @@ def process_text(text):
     # lopp through white cards and lowercase them
     lowercase_cards = []
     for x in white_cards:
-        lowercase_cards.append(x.lower().replace(".", ""))
+        lowercase_cards.append(x.lower())
     # lowercase the input text, that was deteted from the card
     text = text.lower()
-    text = text.replace(".", "")
     text = ' '.join(text.split()) #remove extra empty spaces etc
+    text =  '.'.join(text.split())
 
     # WRatio (the default scorer) blends in partial-ratio matching, which ties many
     # unrelated cards at a high score for short/noisy OCR text; plain ratio doesn't.

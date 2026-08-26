@@ -11,7 +11,7 @@ def draw_instructions(frame, lines):
         wrapped.extend(textwrap.wrap(line, width=80) or [""])
     for i, line in enumerate(wrapped):
         y = 30 + i * 30
-        cv2.putText(frame, line, (20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (54, 207, 48), 2)
+        cv2.putText(frame, line, (20, y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
 
 def detect_card(cam, instructions):
     # Open the default camera
