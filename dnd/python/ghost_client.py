@@ -1,4 +1,7 @@
 import argparse
+import os
+import time
+
 import requests
 
 p = argparse.ArgumentParser(description="HTTP connection")
@@ -10,8 +13,42 @@ p.add_argument("--port", type=int, default=8770)
 # for an argument that was never meant for it.
 args, _ignored = p.parse_known_args()
 
+# How long to keep trying a refused console before giving up. A bare connection
+# refused (errno 111) is nearly always the ghost being restarted to pick up new
+# code -- it is down for fifteen to twenty-five seconds while Kokoro loads.
+# Failing on that turns a routine restart into a dead session, and the errors
+# look random from the table's side because nothing on this side went wrong.
+CONSOLE_RECONNECT_SECONDS = float(os.getenv("GHOST_RECONNECT", "45"))
+
+
+def _console(method, path, **kw):
+    """One call to the ghost's HTTP console, waiting out a restart.
+
+    Retrying is safe *because* the failure is a refused connection: the request
+    never reached the ghost, so nothing can have been executed twice. A timeout
+    is a different animal -- the command may well have landed and only the reply
+    was lost -- so those are raised, never replayed.
+    """
+    url = f"http://{args.host}:{args.port}{path}"
+    deadline = time.monotonic() + CONSOLE_RECONNECT_SECONDS
+    warned = False
+    while True:
+        try:
+            res = requests.request(method, url, **kw)
+            if warned:
+                print("ghost console: back")
+            return res
+        except requests.exceptions.ConnectionError:
+            if time.monotonic() >= deadline:
+                raise
+            if not warned:
+                print("ghost console: refusing connections, waiting for it to come back")
+                warned = True
+            time.sleep(2)
+
+
 def postReq(message):
-    res = requests.post(f"http://{args.host}:{args.port}/command", json=message)
+    res = _console("POST", "/command", json=message, timeout=120)
     print("post response status: ", res.status_code)
     return res.json()
 
@@ -164,7 +201,7 @@ def player_turn():
 
 
 def getReq():
-    res = requests.get(f"http://{args.host}:{args.port}/characters", )
+    res = _console("GET", "/characters", timeout=30)
     #print("get response: ", res.json()["characters"])
     # return list of characters
     return res.json()["characters"]

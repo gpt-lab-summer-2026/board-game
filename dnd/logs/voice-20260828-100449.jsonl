@@ -1,0 +1,39 @@
+{"t": 0.0, "kind": "session_start", "cluster_chat": true, "flavour": true, "flavour_model": "mistral:7b-instruct"}
+{"t": 21.182, "kind": "command", "command": "elf cantrip on freak", "ok": false, "lines": ["elf has no line of sight to freak \u2014 the Unknown Shape is in the way.", "There is nowhere within 30 feet with a clear shot."]}
+{"t": 21.182, "kind": "fault", "code": "REFUSED_NO_SIGHT", "detail": "'elf cantrip on freak': elf has no line of sight to freak \u2014 the Unknown Shape is in the way.", "benign": true}
+{"t": 36.289, "kind": "flavour", "command": "elf cantrip on freak", "text": "Elf's ethereal shimmer falters as they strain to find a clear target, the Unknown Shape proving an impenetrable obstacle."}
+{"t": 62.658, "kind": "command", "command": "elf cantrip on weirdo", "ok": true, "lines": ["elf attacks weirdo: 22 to hit [17] +5.", "That hits AC 10 for 5 damage.", "weirdo is now slowed.", "weirdo is on 2 of 7."]}
+{"t": 79.555, "kind": "flavour", "command": "elf cantrip on weirdo", "text": "The elf's ethereal dart zings towards the weirdo, striking its mark, slowing them momentarily."}
+{"t": 106.726, "kind": "command", "command": "next turn", "ok": true, "lines": ["cat's turn."]}
+{"t": 126.808, "kind": "command", "command": "cat moves to weirdo", "ok": true, "lines": ["cat moves 28 feet towards weirdo.", "That is all the movement cat has."]}
+{"t": 135.777, "kind": "flavour", "command": "cat moves to weirdo", "text": "The cat creeps twenty-eight feet closer to the weirdo."}
+{"t": 156.073, "kind": "command", "command": "cat dashes", "ok": true, "lines": ["cat dashes: another 30 feet of movement this turn."]}
+{"t": 166.422, "kind": "flavour", "command": "cat dashes", "text": "Cat leaps another thirty feet forward."}
+{"t": 186.161, "kind": "command", "command": "cat jumps to weirdo", "ok": true, "lines": ["cat jumps 7 feet (Strength 10 allows 10), clearing whatever was underneath.", "That lands 63 feet from weirdo."]}
+{"t": 202.867, "kind": "flavour", "command": "cat jumps to weirdo", "text": "The cat leaps gracefully, covering impressive ground, distancing itself from them by a considerable span."}
+{"t": 227.212, "kind": "command", "command": "cat moves to weirdo", "ok": true, "lines": ["cat moves 14 feet towards weirdo.", "There is no clear route to weirdo."]}
+{"t": 237.883, "kind": "flavour", "command": "cat moves to weirdo", "text": "The cat leaps and navigates unconventionally, closing in on weirdo, leaving a trail of agile acrobatics in its wake."}
+{"t": 268.555, "kind": "command", "command": "next turn", "ok": true, "lines": ["gentelman's turn.", "gentelman has no line of sight to elf \u2014 the Unknown Shape is in the way.", "There is nowhere within 30 feet with a clear shot.", "emo's turn.", "Over to you \u2014 it's emo's turn."]}
+{"t": 319.059, "kind": "command", "command": "emo casts Shield of Faith on cat", "ok": true, "lines": ["emo casts Shield of Faith (2 slot(s) left).", "cat is now AC 14."]}
+{"t": 323.078, "kind": "flavour", "command": "emo casts Shield of Faith on cat", "text": "Emo imbues the cat with a radiant aura, bolstering its defenses, enhancing its resilience to harm."}
+{"t": 351.247, "kind": "command", "command": "emo cantrip on weirdo", "ok": true, "lines": ["emo has no line of sight to weirdo \u2014 the WALL is in the way.", "emo could move 14 feet to a spot 105 feet from weirdo with a clear shot, and nothing threatens it. Move there and attack?"]}
+{"t": 416.45, "kind": "command", "command": "emo moves southwest", "ok": true, "lines": ["emo moves 28 feet southwest.", "That is all the movement emo has."]}
+{"t": 426.919, "kind": "flavour", "command": "emo moves southwest", "text": "Emo strides twenty-eight feet to the southwest."}
+{"t": 447.778, "kind": "command", "command": "emo cantrip on weirdo", "ok": false, "lines": ["emo has no line of sight to weirdo \u2014 the Unknown Shape is in the way.", "There is nowhere within 0 feet with a clear shot."]}
+{"t": 447.778, "kind": "fault", "code": "REFUSED_NO_SIGHT", "detail": "'emo cantrip on weirdo': emo has no line of sight to weirdo \u2014 the Unknown Shape is in the way.", "benign": true}
+{"t": 463.582, "kind": "flavour", "command": "emo cantrip on weirdo", "text": "Emo reaches out, fingers poised, but the Unknown Shape blocks their line of sight, a silent barrier between them and their target."}
+{"t": 501.915, "kind": "command", "command": "next turn", "ok": true, "lines": ["Round 3, hamster's turn.", "hamster moves 7 feet towards cat.", "There is no clear route to cat.", "hamster is not in reach, so the attack is held.", "weirdo's turn.", "weirdo moves 28 feet towards elf.", "That is all the movement weirdo has.", "weirdo is not in reach, so the attack is held.", "freak's turn.", "freak moves 28 feet towards elf.", "That is all the movement freak has.", "freak is not in reach, so the attack is held.", "elf's turn.", "Over to you \u2014 it's elf's turn."]}
+{"t": 581.4, "kind": "command", "command": "elf casts Ice Knife on weirdo", "ok": true, "lines": ["elf casts Ice Knife (2 slot(s) left).", "weirdo rolls 7 against DC 13 DEX: fails.", "weirdo takes 7, down to 0.", "weirdo drops to 0 hit points and dies."]}
+{"t": 583.11, "kind": "flavour", "command": "elf casts Ice Knife on weirdo", "text": "The elf hurls an icy blade, striking the weirdo, who crumples to the ground, their form shattering under the frosty onslaught."}
+{"t": 637.119, "kind": "command", "command": "next turn", "ok": true, "lines": ["cat's turn."]}
+{"t": 696.747, "kind": "command", "command": "cat melee attack on freak", "ok": true, "lines": ["cat moves 28 feet towards freak.", "That is all the movement cat has.", "cat is not in reach, so the attack is held."]}
+{"t": 709.525, "kind": "flavour", "command": "cat melee attack on freak", "text": "The cat dashes forward, claws extended, but falls short of reaching the freak in this swift lunge."}
+{"t": 731.565, "kind": "command", "command": "next turn", "ok": true, "lines": ["gentelman's turn.", "gentelman doesn't move.", "There is no clear route to elf.", "emo's turn.", "Over to you \u2014 it's emo's turn."]}
+{"t": 767.777, "kind": "command", "command": "emo cantrip on freak", "ok": true, "lines": ["emo has no line of sight to freak \u2014 the Unknown Shape is in the way.", "emo could move 7 feet to a spot 56 feet from freak with a clear shot, and nothing threatens it. Move there and attack?"]}
+{"t": 813.57, "kind": "command", "command": "emo moves southwest", "ok": true, "lines": ["emo moves 28 feet southwest.", "That is all the movement emo has."]}
+{"t": 822.432, "kind": "flavour", "command": "emo moves southwest", "text": "Emo strides twenty-eight feet southwest, their footfalls deliberate and measured."}
+{"t": 875.196, "kind": "command", "command": "emo drinks greater healing potion", "ok": false, "lines": ["emo is not carrying 'greater healing potion'. Carrying: Potion of Healing x0, Smokepowder Bomb x1, Potion of Greater Healing x2."]}
+{"t": 875.196, "kind": "fault", "code": "REFUSED_NO_ITEM", "detail": "'emo drinks greater healing potion': emo is not carrying 'greater healing potion'. Carrying: Potion of Healing x0, Smokepowder Bomb x1, Potion of Greater Healing x2.", "benign": true}
+{"t": 894.22, "kind": "flavour", "command": "emo drinks greater healing potion", "text": "Emo attempts to drink the greater healing potion, but finds it missing from their inventory."}
+{"t": 961.876, "kind": "fault", "code": "INTERRUPTED", "detail": "stopped by hand", "benign": true}
+{"t": 961.876, "kind": "summary", "counts": {"REFUSED_NO_SIGHT": 2, "REFUSED_NO_ITEM": 1, "INTERRUPTED": 1}}
